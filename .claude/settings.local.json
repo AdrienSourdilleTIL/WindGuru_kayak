@@ -8,7 +8,9 @@
       "WebFetch(domain:micro.windguru.cz)",
       "WebFetch(domain:www.windguru.cz)",
       "WebFetch(domain:community.home-assistant.io)",
-      "Bash(cmd /c:*)"
+      "Bash(cmd /c:*)",
+      "Bash(python -m pip install:*)",
+      "Bash(python main.py:*)"
     ]
   }
 }
