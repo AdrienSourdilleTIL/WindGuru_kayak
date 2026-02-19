@@ -2,7 +2,7 @@
 process_data.py — Normalisation et nettoyage des données Windguru brutes.
 
 Transforme le dict parsé (clé "rows") en DataFrame pandas avec des colonnes
-standardisées, des unités cohérentes et les heures filtrées sur la fenêtre de pêche.
+standardisées. Le vent est conservé en nœuds (unité native Windguru).
 """
 
 import logging
@@ -13,8 +13,6 @@ import pandas as pd
 import pytz
 
 logger = logging.getLogger(__name__)
-
-KNOTS_TO_KMH = 1.852
 
 
 def process_data(raw_data: dict, config: dict) -> pd.DataFrame:
@@ -28,7 +26,7 @@ def process_data(raw_data: dict, config: dict) -> pd.DataFrame:
 
     Returns:
         DataFrame avec colonnes standardisées, filtré sur les heures de pêche.
-        Colonnes : datetime, wind_kmh, gust_kmh, wind_dir, wave_height_m,
+        Colonnes : datetime, wind_kts, gust_kts, wind_dir, wave_height_m,
                    wave_period_s, temp_c, rain_mmh
     """
     fishing_cfg = config["fishing"]
@@ -62,11 +60,11 @@ def process_data(raw_data: dict, config: dict) -> pd.DataFrame:
 
         record = {
             "datetime": dt_paris,
-            "wind_kmh": round(wspd * KNOTS_TO_KMH, 1) if wspd is not None else None,
-            "gust_kmh": round(gust * KNOTS_TO_KMH, 1) if gust is not None else None,
+            "wind_kts": round(wspd, 1) if wspd is not None else None,
+            "gust_kts": round(gust, 1) if gust is not None else None,
             "wind_dir": row.get("WDIRN"),
-            "wave_height_m": row.get("HTSGW"),   # None si absent du modèle
-            "wave_period_s": row.get("PERPW"),   # None si absent du modèle
+            "wave_height_m": row.get("HTSGW"),
+            "wave_period_s": row.get("PERPW"),
             "temp_c": row.get("TMP"),
             "rain_mmh": row.get("APCP1"),
         }
@@ -93,19 +91,80 @@ def process_data(raw_data: dict, config: dict) -> pd.DataFrame:
 
     unique_days = df["datetime"].apply(lambda dt: dt.date()).nunique() if len(df) > 0 else 0
     logger.info(
-        "Données normalisées : %d créneaux sur %d jours (vent, vagues, temp, pluie).",
+        "Données normalisées : %d créneaux sur %d jours (vent en kts, vagues, temp, pluie).",
         len(df),
         unique_days,
     )
 
-    # Avertissements sur les données manquantes
+    # Info vagues Windguru (souvent absentes — complétées par Open-Meteo Marine ensuite)
     for col in ("wave_height_m", "wave_period_s"):
         if col in df.columns:
             missing = df[col].isna().sum()
             if missing == len(df):
-                logger.warning("Colonne '%s' : données non disponibles pour ce spot/modèle.", col)
+                logger.info(
+                    "Colonne '%s' absente du modèle Windguru — sera alimentée par Open-Meteo.", col
+                )
             elif missing > 0:
-                logger.warning("Colonne '%s' : %d valeurs manquantes.", col, missing)
+                logger.info("Colonne '%s' : %d valeurs manquantes (Windguru).", col, missing)
+
+    return df
+
+
+def merge_wave_data(df_wind: pd.DataFrame, df_waves: pd.DataFrame) -> pd.DataFrame:
+    """
+    Fusionne les données de vagues Open-Meteo avec le DataFrame vent Windguru.
+
+    La fusion est faite sur l'heure exacte (truncate à l'heure).
+    Les colonnes wave_height_m et wave_period_s issues de Windguru (toutes None)
+    sont remplacées par les valeurs réelles d'Open-Meteo.
+    Les colonnes supplémentaires (direction, houle) sont ajoutées.
+
+    Args:
+        df_wind:  DataFrame Windguru normalisé (depuis process_data()).
+        df_waves: DataFrame Open-Meteo (depuis fetch_waves.fetch_wave_forecast()).
+
+    Returns:
+        DataFrame fusionné avec données de vagues réelles.
+    """
+    df = df_wind.copy()
+
+    # Clé de fusion : datetime tronqué à l'heure (sans minutes ni secondes)
+    # On utilise une colonne intermédiaire en UTC pour éviter les problèmes DST
+    df["_merge_key"] = df["datetime"].apply(
+        lambda dt: dt.replace(minute=0, second=0, microsecond=0).astimezone(pytz.utc)
+    )
+
+    df_w = df_waves.copy()
+    df_w["_merge_key"] = df_w["datetime"].apply(
+        lambda dt: dt.replace(minute=0, second=0, microsecond=0).astimezone(pytz.utc)
+    )
+
+    wave_cols = [
+        "_merge_key", "wave_height_m", "wave_period_s",
+        "wave_direction_deg", "wave_direction_cardinal",
+        "swell_height_m", "swell_period_s",
+    ]
+    # Ne garder que les colonnes qui existent dans df_waves
+    wave_cols = [c for c in wave_cols if c in df_w.columns]
+    df_w_slim = df_w[wave_cols].drop_duplicates(subset=["_merge_key"])
+
+    # Supprimer les colonnes vagues Windguru (toutes None) avant fusion
+    drop_cols = [c for c in ("wave_height_m", "wave_period_s") if c in df.columns]
+    df = df.drop(columns=drop_cols)
+
+    df = df.merge(df_w_slim, on="_merge_key", how="left")
+    df = df.drop(columns=["_merge_key"])
+
+    matched = df["wave_height_m"].notna().sum()
+    logger.info(
+        "Fusion vagues Open-Meteo : %d/%d créneaux avec données réelles.",
+        matched, len(df),
+    )
+    if matched == 0:
+        logger.warning(
+            "Aucun créneau vent n'a pu être associé à des données de vagues. "
+            "Vérifiez que les fuseaux horaires sont cohérents."
+        )
 
     return df
 

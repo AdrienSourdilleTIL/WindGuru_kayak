@@ -1,8 +1,10 @@
 """
-report.py — Génération du rapport HTML via le template Jinja2.
+report.py — Génération du rapport HTML via le template Jinja2 (V2).
 
-Encode les graphiques PNG en base64 et les intègre directement dans le HTML
-pour produire un email auto-suffisant (sans pièces jointes ni liens externes).
+Deux modes de rendu :
+- mode "local"  : images encodées base64 inline (pour sauvegarde HTML standalone).
+- mode "email"  : images référencées par CID (Content-ID) pour email multipart/related.
+                  Les CID sont passés au template ; les pièces MIME sont gérées par email_sender.
 """
 
 import base64
@@ -15,7 +17,6 @@ from jinja2 import Environment, FileSystemLoader
 
 logger = logging.getLogger(__name__)
 
-# Jours et mois en français
 JOURS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
 MOIS_FR  = ["", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
             "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"]
@@ -34,16 +35,22 @@ VERDICT_COLOR = {
     "Déconseillé": "#742a2a",
 }
 
+# CID fixes pour les 4 graphiques (utilisés en mode email)
+CHART_CIDS = {
+    "score":     "chart_score@kayak",
+    "wind":      "chart_wind@kayak",
+    "waves":     "chart_waves@kayak",
+    "temp_rain": "chart_temprain@kayak",
+}
+
 
 def _date_to_long_fr(d: date) -> str:
-    """Convertit une date en chaîne longue française : 'Mercredi 19 Février 2026'."""
     jour = JOURS_FR[d.weekday()]
     mois = MOIS_FR[d.month]
     return f"{jour} {d.day} {mois} {d.year}"
 
 
 def _date_to_short_fr(d: date) -> str:
-    """Convertit une date en chaîne courte : 'Mer. 19/02'."""
     return f"{JOURS_FR[d.weekday()][:3]}. {d.day:02d}/{d.month:02d}"
 
 
@@ -53,9 +60,6 @@ def _encode_image(path: Path) -> str:
 
 
 def _generate_recommendation(daily_summaries: list[dict]) -> str:
-    """
-    Génère un texte de recommandation en français basé sur les scores des 7 prochains jours.
-    """
     today = date.today()
     next_7 = [s for s in daily_summaries if s["date"] > today][:7]
 
@@ -96,44 +100,30 @@ def _generate_recommendation(daily_summaries: list[dict]) -> str:
     return "<br>".join(lines)
 
 
-def generate_report(
-    df_scored,
+def _build_template_context(
     daily_summaries: list[dict],
-    chart_paths: dict,
     config: dict,
-    templates_dir: str = "templates",
-) -> str:
+    charts_rendered: dict,
+) -> dict:
     """
-    Génère le rapport HTML complet.
+    Construit le contexte Jinja2 commun aux deux modes de rendu.
 
     Args:
-        df_scored:       DataFrame scoré (non utilisé directement ici, présent pour cohérence API).
-        daily_summaries: Liste de résumés journaliers.
-        chart_paths:     Dict {'score': Path, 'wind': Path, 'waves': Path, 'temp_rain': Path}.
-        config:          Configuration chargée depuis config.yaml.
-        templates_dir:   Dossier contenant report.html.
-
-    Returns:
-        Chaîne HTML complète.
+        charts_rendered: Dict {'score': <src string>, 'wind': ..., ...}
+                         En mode local : "data:image/png;base64,..."
+                         En mode email : "cid:chart_score@kayak"
     """
     tz = pytz.timezone(config["fishing"]["timezone"])
     now_local = datetime.now(tz)
     today = now_local.date()
 
-    # Résumé du jour
-    today_summary = next(
-        (s for s in daily_summaries if s["date"] == today), None
-    )
-
-    # CSS classe du score aujourd'hui
+    today_summary = next((s for s in daily_summaries if s["date"] == today), None)
     today_css = VERDICT_CSS.get(today_summary["verdict"] if today_summary else "", "moyen")
 
-    # Top 3 prochains jours (hors aujourd'hui)
     future = [s for s in daily_summaries if s["date"] > today]
     top_days = sorted(future, key=lambda s: s["daily_score"], reverse=True)[:3]
     bad_days = [s for s in future if s["verdict"] == "Déconseillé"][:3]
 
-    # Enrichissement pour le template
     def enrich(s: dict) -> dict:
         s = dict(s)
         s["day_long"]  = _date_to_long_fr(s["date"])
@@ -142,35 +132,62 @@ def generate_report(
         s["color"]     = VERDICT_COLOR.get(s["verdict"], "#2d3748")
         return s
 
-    top_days = [enrich(s) for s in top_days]
-    bad_days = [enrich(s) for s in bad_days]
-
-    # Encodage des graphiques
-    charts_b64 = {
-        key: _encode_image(path)
-        for key, path in chart_paths.items()
+    return {
+        "spot_name":    config["spot"]["name"],
+        "spot_id":      config["spot"]["id"],
+        "model":        config["spot"]["model"],
+        "today_str":    today.isoformat(),
+        "today_long":   _date_to_long_fr(today),
+        "generated_at": now_local.strftime("%H:%M"),
+        "today_summary": enrich(today_summary) if today_summary else None,
+        "today_css":    today_css,
+        "top_days":     [enrich(s) for s in top_days],
+        "bad_days":     [enrich(s) for s in bad_days],
+        "recommendation": _generate_recommendation(daily_summaries),
+        "charts":       charts_rendered,
     }
 
-    # Template Jinja2
+
+def generate_report(
+    df_scored,
+    daily_summaries: list[dict],
+    chart_paths: dict,
+    config: dict,
+    templates_dir: str = "templates",
+    email_mode: bool = False,
+) -> str:
+    """
+    Génère le rapport HTML complet.
+
+    Args:
+        df_scored:       DataFrame scoré.
+        daily_summaries: Liste de résumés journaliers.
+        chart_paths:     Dict {'score': Path, 'wind': Path, 'waves': Path, 'temp_rain': Path}.
+        config:          Configuration chargée depuis config.yaml.
+        templates_dir:   Dossier contenant report.html.
+        email_mode:      Si True, utilise des CID pour les images (pour email multipart/related).
+                         Si False, encode les images en base64 inline (HTML standalone).
+
+    Returns:
+        Chaîne HTML complète.
+    """
+    if email_mode:
+        # Mode email : les images sont référencées par CID, attachées séparément par email_sender
+        charts_rendered = {key: f"cid:{cid}" for key, cid in CHART_CIDS.items()}
+    else:
+        # Mode local : images base64 inline
+        charts_rendered = {
+            key: f"data:image/png;base64,{_encode_image(path)}"
+            for key, path in chart_paths.items()
+        }
+
+    ctx = _build_template_context(daily_summaries, config, charts_rendered)
+
     env = Environment(loader=FileSystemLoader(templates_dir))
     template = env.get_template("report.html")
+    html = template.render(**ctx)
 
-    html = template.render(
-        spot_name=config["spot"]["name"],
-        spot_id=config["spot"]["id"],
-        model=config["spot"]["model"],
-        today_str=today.isoformat(),
-        today_long=_date_to_long_fr(today),
-        generated_at=now_local.strftime("%H:%M"),
-        today_summary=enrich(today_summary) if today_summary else None,
-        today_css=today_css,
-        top_days=top_days,
-        bad_days=bad_days,
-        recommendation=_generate_recommendation(daily_summaries),
-        charts=charts_b64,
-    )
-
-    logger.info("Rapport HTML généré (%d caractères).", len(html))
+    logger.info("Rapport HTML généré (%d caractères, mode=%s).", len(html), "email" if email_mode else "local")
     return html
 
 

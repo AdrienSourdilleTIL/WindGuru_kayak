@@ -10,7 +10,10 @@
       "WebFetch(domain:community.home-assistant.io)",
       "Bash(cmd /c:*)",
       "Bash(python -m pip install:*)",
-      "Bash(python main.py:*)"
+      "Bash(python main.py:*)",
+      "mcp__filesystem__directory_tree",
+      "mcp__filesystem__read_multiple_files",
+      "Bash(python:*)"
     ]
   }
 }

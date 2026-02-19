@@ -2,6 +2,8 @@ spot:
   id: 48552
   name: "La Couarde sur Mer"
   island: "Île de Ré"
+  lat: 46.19
+  lon: -1.42
   model: "gfs"
   variables:
     - WSPD
@@ -20,11 +22,12 @@ fishing:
 
 scoring:
   weights:
-    wind: 0.30
-    gust: 0.20
-    wave: 0.30
-    rain: 0.10
-    temperature: 0.10
+    wind: 0.25         # Vent moyen (nœuds) — idéal < 15 kts
+    gust: 0.20         # Rafales (nœuds) — idéal < 17 kts
+    wave_height: 0.20  # Hauteur vagues (m) — idéal < 1.2m
+    wave_period: 0.15  # Période vagues (s) — idéal > 12s
+    rain: 0.10         # Précipitations (mm/h)
+    temperature: 0.10  # Température (°C)
   verdicts:
     excellent: 70
     favorable: 50

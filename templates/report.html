@@ -69,7 +69,7 @@
     .score-circle .score-num { font-size: 28px; line-height: 1; }
     .score-circle .score-label { font-size: 10px; opacity: 0.85; margin-top: 2px; }
 
-    .score-excellent { background: #c6f6d5; color: #276749; border: 3px solid #48bb78; }
+    .score-excellent  { background: #c6f6d5; color: #276749; border: 3px solid #48bb78; }
     .score-favorable  { background: #fefcbf; color: #744210; border: 3px solid #f6e05e; }
     .score-moyen      { background: #feebc8; color: #7b341e; border: 3px solid #f6ad55; }
     .score-deconseille{ background: #fed7d7; color: #742a2a; border: 3px solid #fc8181; }
@@ -83,7 +83,7 @@
     .today-details .meta {
       font-size: 13px;
       color: #4a5568;
-      line-height: 1.8;
+      line-height: 2.0;
     }
     .today-details .meta span { font-weight: 600; color: #2d3748; }
 
@@ -100,6 +100,43 @@
       margin-top: 6px;
     }
 
+    /* Badge direction vent */
+    .wind-dir-badge {
+      display: inline-block;
+      background: #f7fafc;
+      color: #4a5568;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 4px;
+    }
+
+    /* Grille données vagues */
+    .wave-grid {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+    .wave-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #f0fff4;
+      border: 1px solid #c6f6d5;
+      border-radius: 8px;
+      padding: 8px 16px;
+      min-width: 90px;
+    }
+    .wave-stat .wval { font-size: 20px; font-weight: 700; color: #276749; }
+    .wave-stat .wlab { font-size: 10px; color: #718096; text-transform: uppercase; margin-top: 2px; }
+    .wave-stat.period { background: #f5f3ff; border-color: #d6bcfa; }
+    .wave-stat.period .wval { color: #553c9a; }
+    .wave-stat.bad { background: #fff5f5; border-color: #fed7d7; }
+    .wave-stat.bad .wval { color: #c53030; }
+
     /* Top 3 + jours à éviter */
     .days-grid {
       display: grid;
@@ -111,14 +148,14 @@
       padding: 14px 16px;
       border-left: 4px solid;
     }
-    .day-card.excellent  { background: #f0fff4; border-color: #48bb78; }
-    .day-card.favorable  { background: #fffff0; border-color: #d69e2e; }
-    .day-card.moyen      { background: #fffaf0; border-color: #ed8936; }
-    .day-card.deconseille{ background: #fff5f5; border-color: #fc8181; }
+    .day-card.excellent   { background: #f0fff4; border-color: #48bb78; }
+    .day-card.favorable   { background: #fffff0; border-color: #d69e2e; }
+    .day-card.moyen       { background: #fffaf0; border-color: #ed8936; }
+    .day-card.deconseille { background: #fff5f5; border-color: #fc8181; }
 
-    .day-card .day-name { font-weight: 700; font-size: 14px; }
-    .day-card .day-score { font-size: 22px; font-weight: 800; margin: 4px 0; }
-    .day-card .day-meta { font-size: 12px; color: #718096; line-height: 1.6; }
+    .day-card .day-name    { font-weight: 700; font-size: 14px; }
+    .day-card .day-score   { font-size: 22px; font-weight: 800; margin: 4px 0; }
+    .day-card .day-meta    { font-size: 12px; color: #718096; line-height: 1.7; }
     .day-card .day-verdict { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
 
     /* Recommandation */
@@ -133,15 +170,12 @@
     }
 
     /* Graphiques */
-    .chart-grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 16px;
-    }
+    .chart-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
     .chart-img {
       width: 100%;
       border-radius: 6px;
       border: 1px solid #e2e8f0;
+      display: block;
     }
 
     /* Footer */
@@ -153,9 +187,6 @@
       background: white;
       border-radius: 0 0 12px 12px;
     }
-
-    /* Utilitaires */
-    .emoji { font-style: normal; }
   </style>
 </head>
 <body>
@@ -179,15 +210,22 @@
       <div class="today-details">
         <div class="verdict">{{ today_summary.verdict }}</div>
         <div class="meta">
-          {% if today_summary.avg_wind_kmh is not none %}
-          Vent moyen : <span>{{ today_summary.avg_wind_kmh }} km/h</span> &nbsp;|&nbsp;
+          {% if today_summary.avg_wind_kts is not none %}
+          Vent moyen : <span>{{ today_summary.avg_wind_kts }} kts</span>
+          {% if today_summary.wind_dir %}
+          <span class="wind-dir-badge">{{ today_summary.wind_dir_arrow }} {{ today_summary.wind_dir }} — {{ today_summary.wind_dir_fr }}</span>
           {% endif %}
-          {% if today_summary.max_gust_kmh is not none %}
-          Rafales : <span>{{ today_summary.max_gust_kmh }} km/h</span>
+          {% endif %}
+          {% if today_summary.max_gust_kts is not none %}
+          &nbsp;|&nbsp; Rafales : <span>{{ today_summary.max_gust_kts }} kts</span>
           {% endif %}
           <br>
           {% if today_summary.avg_wave_m is not none %}
-          Vagues : <span>{{ today_summary.avg_wave_m }} m</span> &nbsp;|&nbsp;
+          Vagues : <span>{{ today_summary.avg_wave_m }} m</span>
+          {% if today_summary.avg_wave_period_s is not none %}
+          &nbsp;|&nbsp; Période : <span>{{ today_summary.avg_wave_period_s }} s</span>
+          {% endif %}
+          &nbsp;|&nbsp;
           {% endif %}
           {% if today_summary.avg_temp_c is not none %}
           Température : <span>{{ today_summary.avg_temp_c }}°C</span>
@@ -220,8 +258,16 @@
         <div class="day-score" style="color:{{ s.color }};">{{ s.daily_score | int }}</div>
         <div class="day-verdict">{{ s.verdict }}</div>
         <div class="day-meta">
-          {% if s.avg_wind_kmh is not none %}Vent ~{{ s.avg_wind_kmh }} km/h<br>{% endif %}
-          {% if s.avg_wave_m is not none %}Vagues ~{{ s.avg_wave_m }} m<br>{% endif %}
+          {% if s.avg_wind_kts is not none %}
+          Vent ~{{ s.avg_wind_kts }} kts
+          {% if s.wind_dir %}{{ s.wind_dir_arrow }} {{ s.wind_dir }}{% endif %}
+          <br>
+          {% endif %}
+          {% if s.avg_wave_m is not none %}
+          Vagues ~{{ s.avg_wave_m }} m
+          {% if s.avg_wave_period_s is not none %} · {{ s.avg_wave_period_s }}s{% endif %}
+          <br>
+          {% endif %}
           {% if s.best_window != '–' %}Créneau : {{ s.best_window }}{% endif %}
         </div>
       </div>
@@ -242,7 +288,10 @@
         <div class="day-verdict">{{ s.verdict }}</div>
         <div class="day-meta">
           Facteur limitant : {{ s.limiting_factor }}
-          {% if s.avg_wind_kmh is not none %}<br>Vent ~{{ s.avg_wind_kmh }} km/h{% endif %}
+          {% if s.avg_wind_kts is not none %}<br>Vent ~{{ s.avg_wind_kts }} kts
+          {% if s.wind_dir %} {{ s.wind_dir_arrow }} {{ s.wind_dir }}{% endif %}{% endif %}
+          {% if s.avg_wave_m is not none %}<br>Vagues ~{{ s.avg_wave_m }} m
+          {% if s.avg_wave_period_s is not none %} · {{ s.avg_wave_period_s }}s{% endif %}{% endif %}
         </div>
       </div>
       {% endfor %}
@@ -253,28 +302,28 @@
   <!-- Graphiques -->
   <div class="card">
     <h2>Prévisions 14 jours — Score de pêche</h2>
-    <img class="chart-img" src="data:image/png;base64,{{ charts.score }}" alt="Score 14 jours">
+    <img class="chart-img" src="{{ charts.score }}" alt="Score 14 jours">
   </div>
 
   <div class="card">
-    <h2>Prévisions 14 jours — Vent et rafales</h2>
-    <img class="chart-img" src="data:image/png;base64,{{ charts.wind }}" alt="Vent 14 jours">
+    <h2>Prévisions 14 jours — Vent et rafales (nœuds)</h2>
+    <img class="chart-img" src="{{ charts.wind }}" alt="Vent 14 jours">
   </div>
 
   <div class="card">
-    <h2>Prévisions 14 jours — Hauteur des vagues</h2>
-    <img class="chart-img" src="data:image/png;base64,{{ charts.waves }}" alt="Vagues 14 jours">
+    <h2>Prévisions 14 jours — Hauteur et période des vagues</h2>
+    <img class="chart-img" src="{{ charts.waves }}" alt="Vagues 14 jours">
   </div>
 
   <div class="card">
     <h2>Prévisions 14 jours — Température et précipitations</h2>
-    <img class="chart-img" src="data:image/png;base64,{{ charts.temp_rain }}" alt="Température et pluie">
+    <img class="chart-img" src="{{ charts.temp_rain }}" alt="Température et pluie">
   </div>
 
   <!-- Footer -->
   <div class="footer">
     Données météo : Windguru (modèle {{ model | upper }}, spot {{ spot_id }}) &nbsp;·&nbsp;
-    Généré automatiquement par Kayak Fishing Forecast
+    Kayak Fishing Forecast V2
   </div>
 
 </div>

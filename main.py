@@ -3,12 +3,13 @@ main.py — Orchestrateur du système Kayak Fishing Forecast.
 
 Enchaîne les étapes :
   1. Chargement de la configuration
-  2. Récupération des données Windguru
-  3. Normalisation des données
-  4. Calcul des scores de pêche
-  5. Génération des graphiques
-  6. Génération du rapport HTML
-  7. Envoi de l'email quotidien
+  2. Récupération des données Windguru (vent, temp, pluie)
+  3. Récupération des données de vagues Open-Meteo Marine API
+  4. Normalisation et fusion des données
+  5. Calcul des scores de pêche
+  6. Génération des graphiques
+  7. Génération du rapport HTML
+  8. Envoi de l'email quotidien
 
 Usage :
   python main.py               # Exécution complète
@@ -37,7 +38,8 @@ from src.fetch_data import (
     load_raw_data,
     save_raw_data,
 )
-from src.process_data import process_data, save_processed_data
+from src.fetch_waves import WaveFetchError, fetch_wave_forecast, load_wave_data, save_wave_data
+from src.process_data import process_data, merge_wave_data, save_processed_data
 from src.scoring import compute_scores
 from src.visualize import generate_all_charts
 from src.report import generate_report, save_report
@@ -100,14 +102,43 @@ def main(no_email: bool = False, no_fetch: bool = False) -> int:
             logger.error("Le rapport ne sera pas envoyé.")
             return 1
 
-    # 3. Normalisation
+    # 3. Données de vagues — Open-Meteo Marine API
+    forecast_days = config["fishing"].get("forecast_days", 14)
+    if no_fetch:
+        try:
+            df_waves = load_wave_data(raw_dir)
+            logger.info("Données vagues chargées depuis le cache.")
+        except FileNotFoundError:
+            logger.warning("Cache vagues introuvable — fetch Open-Meteo quand même.")
+            df_waves = None
+            try:
+                df_waves = fetch_wave_forecast(
+                    lat=spot["lat"], lon=spot["lon"], forecast_days=forecast_days
+                )
+                save_wave_data(df_waves, raw_dir, today)
+            except WaveFetchError as e:
+                logger.warning("Données vagues indisponibles : %s. Score vagues = neutre.", e)
+                df_waves = None
+    else:
+        try:
+            df_waves = fetch_wave_forecast(
+                lat=spot["lat"], lon=spot["lon"], forecast_days=forecast_days
+            )
+            save_wave_data(df_waves, raw_dir, today)
+        except WaveFetchError as e:
+            logger.warning("Données vagues indisponibles : %s. Score vagues = neutre.", e)
+            df_waves = None
+
+    # 4. Normalisation vent + fusion vagues
     df = process_data(raw_data, config)
     if df.empty:
         logger.error("Aucune donnée après normalisation. Arrêt.")
         return 1
+    if df_waves is not None:
+        df = merge_wave_data(df, df_waves)
     save_processed_data(df, "data/processed", today)
 
-    # 4. Scoring
+    # 5. Scoring
     df_scored, daily_summaries = compute_scores(df, config)
 
     if not daily_summaries:
@@ -123,20 +154,23 @@ def main(no_email: bool = False, no_fetch: bool = False) -> int:
             today_summary["verdict"],
         )
 
-    # 5. Graphiques
+    # 6. Graphiques
     chart_paths = generate_all_charts(df_scored, daily_summaries, "reports")
 
-    # 6. Rapport HTML
-    html = generate_report(df_scored, daily_summaries, chart_paths, config)
-    save_report(html, "reports", today)
+    # 7. Rapport HTML — version locale (base64 inline) pour sauvegarde
+    html_local = generate_report(df_scored, daily_summaries, chart_paths, config, email_mode=False)
+    save_report(html_local, "reports", today)
 
-    # 7. Envoi email
+    # 8. Envoi email
     if no_email:
         logger.info("Mode --no-email : envoi ignoré. Rapport disponible dans reports/")
         return 0
 
+    # Version email (images CID) pour que les graphiques s'affichent dans Gmail
+    html_email = generate_report(df_scored, daily_summaries, chart_paths, config, email_mode=True)
+
     try:
-        send_report_email(html, config, daily_summaries)
+        send_report_email(html_email, config, daily_summaries, chart_paths=chart_paths)
         logger.info("Pipeline terminé avec succès.")
         return 0
     except RuntimeError as e:

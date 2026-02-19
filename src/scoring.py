@@ -1,8 +1,9 @@
 """
-scoring.py — Algorithme "Fishing Suitability Score" pour le kayak pêche.
+scoring.py — Algorithme "Fishing Suitability Score" pour le kayak pêche (V2).
 
 Calcule un score 0-100 par créneau horaire, puis un score journalier agrégé.
-Les seuils et pondérations sont configurables via config.yaml.
+Le vent est en nœuds. La période des vagues est intégrée au score.
+Un malus bloquant plafonne le score à 20 si les conditions sont rédhibitoires.
 """
 
 import logging
@@ -11,6 +12,51 @@ from typing import Optional
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Direction du vent : flèche et texte lisible
+# ---------------------------------------------------------------------------
+
+_DIR_ARROWS = {
+    "N":   "↓",  # vent vient du Nord → souffle vers le Sud
+    "NNE": "↙", "NE": "↙", "ENE": "←",
+    "E":   "←",
+    "ESE": "↖", "SE": "↖", "SSE": "↑",
+    "S":   "↑",
+    "SSW": "↗", "SW": "↗", "WSW": "→",
+    "W":   "→",
+    "WNW": "↘", "NW": "↘", "NNW": "↓",
+}
+
+_DIR_FR = {
+    "N": "Nord", "NNE": "Nord-Nord-Est", "NE": "Nord-Est", "ENE": "Est-Nord-Est",
+    "E": "Est", "ESE": "Est-Sud-Est", "SE": "Sud-Est", "SSE": "Sud-Sud-Est",
+    "S": "Sud", "SSW": "Sud-Sud-Ouest", "SW": "Sud-Ouest", "WSW": "Ouest-Sud-Ouest",
+    "W": "Ouest", "WNW": "Ouest-Nord-Ouest", "NW": "Nord-Ouest", "NNW": "Nord-Nord-Ouest",
+}
+
+
+def wind_dir_arrow(direction: Optional[str]) -> str:
+    """Retourne la flèche Unicode correspondant à la direction du vent."""
+    if not direction:
+        return "?"
+    return _DIR_ARROWS.get(direction.upper(), direction)
+
+
+def wind_dir_fr(direction: Optional[str]) -> str:
+    """Retourne le nom français de la direction du vent."""
+    if not direction:
+        return "–"
+    return _DIR_FR.get(direction.upper(), direction)
+
+
+def _dominant_direction(series: pd.Series) -> Optional[str]:
+    """Retourne la direction la plus fréquente d'une série (ignore None/NaN)."""
+    clean = series.dropna()
+    if clean.empty:
+        return None
+    return clean.mode().iloc[0]
 
 
 # ---------------------------------------------------------------------------
@@ -43,45 +89,65 @@ def _piecewise_linear(value: float, breakpoints: list[tuple[float, float]]) -> f
     return breakpoints[-1][1]
 
 
-def score_wind(wind_kmh: Optional[float]) -> float:
-    """Score vent moyen en km/h. Idéal : < 14 km/h. Rédhibitoire : > 40 km/h."""
-    if wind_kmh is None:
+def score_wind(wind_kts: Optional[float]) -> float:
+    """Score vent moyen en nœuds. Idéal : < 15 kts. Rédhibitoire : > 30 kts."""
+    if wind_kts is None:
         return 50.0
-    return _piecewise_linear(wind_kmh, [
+    return _piecewise_linear(wind_kts, [
         (0,  100),
-        (14, 100),
-        (22,  80),
-        (30,  40),
-        (40,  10),
-        (50,   0),
+        (10, 100),
+        (15,  90),
+        (20,  60),
+        (25,  25),
+        (30,   5),
+        (35,   0),
     ])
 
 
-def score_gust(gust_kmh: Optional[float]) -> float:
-    """Score rafales en km/h. Idéal : < 20 km/h. Rédhibitoire : > 55 km/h."""
-    if gust_kmh is None:
+def score_gust(gust_kts: Optional[float]) -> float:
+    """Score rafales en nœuds. Idéal : < 17 kts. Rédhibitoire : > 25 kts."""
+    if gust_kts is None:
         return 50.0
-    return _piecewise_linear(gust_kmh, [
+    return _piecewise_linear(gust_kts, [
         (0,  100),
-        (20, 100),
-        (30,  70),
-        (40,  30),
-        (55,   5),
-        (65,   0),
+        (12, 100),
+        (17,  85),
+        (20,  55),
+        (25,  15),
+        (30,   0),
     ])
 
 
-def score_wave(wave_m: Optional[float]) -> float:
+def score_wave_height(wave_m: Optional[float]) -> float:
     """Score hauteur vagues en mètres. Idéal : < 0.5m. Rédhibitoire : > 1.2m."""
     if wave_m is None:
-        return 50.0  # Neutre si données manquantes
+        return 50.0
     return _piecewise_linear(wave_m, [
         (0.0, 100),
         (0.5, 100),
         (0.8,  70),
-        (1.0,  40),
-        (1.2,  10),
+        (1.0,  35),
+        (1.2,   5),
         (1.5,   0),
+    ])
+
+
+def score_wave_period(period_s: Optional[float]) -> float:
+    """
+    Score période des vagues en secondes.
+    Longue période = houle douce, facile à pagayer.
+    Courte période = mer hachée, inconfortable et dangereuse.
+    Idéal : >= 12s. Mauvais : < 6s.
+    """
+    if period_s is None:
+        return 50.0
+    return _piecewise_linear(period_s, [
+        (3,    0),
+        (6,   20),
+        (8,   55),
+        (10,  80),
+        (12, 100),
+        (20, 100),
     ])
 
 
@@ -115,6 +181,30 @@ def score_temp(temp_c: Optional[float]) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Malus bloquant : conditions rédhibitoires
+# ---------------------------------------------------------------------------
+
+def _blocking_malus(wind_kts: Optional[float], gust_kts: Optional[float],
+                    wave_m: Optional[float]) -> bool:
+    """
+    Retourne True si les conditions sont rédhibitoires pour le kayak.
+    Dans ce cas, le score sera plafonné à 20/100.
+
+    Critères bloquants :
+    - Vent moyen > 25 kts  (force 6 Beaufort)
+    - Rafales > 30 kts
+    - Vagues > 1.2m
+    """
+    if wind_kts is not None and wind_kts > 25:
+        return True
+    if gust_kts is not None and gust_kts > 30:
+        return True
+    if wave_m is not None and wave_m > 1.2:
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Score composite horaire
 # ---------------------------------------------------------------------------
 
@@ -123,25 +213,38 @@ def compute_hourly_score(row: pd.Series, weights: dict) -> float:
     Calcule le score composite pour une ligne horaire.
 
     Args:
-        row:     Ligne du DataFrame (wind_kmh, gust_kmh, wave_height_m, rain_mmh, temp_c).
-        weights: Dict {'wind': 0.30, 'gust': 0.20, 'wave': 0.30, 'rain': 0.10, 'temperature': 0.10}
+        row:     Ligne du DataFrame (wind_kts, gust_kts, wave_height_m,
+                 wave_period_s, rain_mmh, temp_c).
+        weights: Dict de pondérations depuis config.yaml.
 
     Returns:
-        Score entre 0 et 100.
+        Score entre 0 et 100 (plafonné à 20 si conditions bloquantes).
     """
-    s_wind  = score_wind(row.get("wind_kmh"))
-    s_gust  = score_gust(row.get("gust_kmh"))
-    s_wave  = score_wave(row.get("wave_height_m"))
-    s_rain  = score_rain(row.get("rain_mmh"))
-    s_temp  = score_temp(row.get("temp_c"))
+    wind_kts = row.get("wind_kts")
+    gust_kts = row.get("gust_kts")
+    wave_m   = row.get("wave_height_m")
+    period_s = row.get("wave_period_s")
+
+    s_wind   = score_wind(wind_kts)
+    s_gust   = score_gust(gust_kts)
+    s_wave_h = score_wave_height(wave_m)
+    s_wave_p = score_wave_period(period_s)
+    s_rain   = score_rain(row.get("rain_mmh"))
+    s_temp   = score_temp(row.get("temp_c"))
 
     total = (
-        s_wind  * weights.get("wind", 0.30)
-        + s_gust  * weights.get("gust", 0.20)
-        + s_wave  * weights.get("wave", 0.30)
-        + s_rain  * weights.get("rain", 0.10)
-        + s_temp  * weights.get("temperature", 0.10)
+        s_wind   * weights.get("wind", 0.25)
+        + s_gust   * weights.get("gust", 0.20)
+        + s_wave_h * weights.get("wave_height", 0.20)
+        + s_wave_p * weights.get("wave_period", 0.15)
+        + s_rain   * weights.get("rain", 0.10)
+        + s_temp   * weights.get("temperature", 0.10)
     )
+
+    # Malus bloquant : plafonner à 20 si conditions rédhibitoires
+    if _blocking_malus(wind_kts, gust_kts, wave_m):
+        total = min(total, 20.0)
+
     return round(total, 1)
 
 
@@ -156,9 +259,6 @@ def get_verdict(score: float, thresholds: dict) -> str:
     Args:
         score:      Score journalier 0-100.
         thresholds: Dict {'excellent': 70, 'favorable': 50, 'moyen': 30}
-
-    Returns:
-        Chaîne descriptive du verdict.
     """
     if score >= thresholds.get("excellent", 70):
         return "Excellent"
@@ -192,20 +292,25 @@ def _find_best_window(df_day: pd.DataFrame, score_col: str = "fishing_score") ->
 def _main_limiting_factor(df_day: pd.DataFrame, weights: dict) -> str:
     """Identifie le principal facteur limitant du jour."""
     candidates = {
-        "vent fort": df_day["wind_kmh"].mean() if "wind_kmh" in df_day else None,
-        "rafales": df_day["gust_kmh"].mean() if "gust_kmh" in df_day else None,
-        "vagues": df_day["wave_height_m"].mean() if "wave_height_m" in df_day else None,
-        "pluie": df_day["rain_mmh"].mean() if "rain_mmh" in df_day else None,
+        "vent fort":      df_day["wind_kts"].mean() if "wind_kts" in df_day else None,
+        "rafales":        df_day["gust_kts"].mean() if "gust_kts" in df_day else None,
+        "vagues":         df_day["wave_height_m"].mean() if "wave_height_m" in df_day else None,
+        "houle courte":   df_day["wave_period_s"].mean() if "wave_period_s" in df_day else None,
+        "pluie":          df_day["rain_mmh"].mean() if "rain_mmh" in df_day else None,
     }
 
     scores_by_factor = {
-        "vent fort": score_wind(candidates["vent fort"]),
-        "rafales": score_gust(candidates["rafales"]),
-        "vagues": score_wave(candidates["vagues"]),
-        "pluie": score_rain(candidates["pluie"]),
+        "vent fort":    score_wind(candidates["vent fort"]),
+        "rafales":      score_gust(candidates["rafales"]),
+        "vagues":       score_wave_height(candidates["vagues"]),
+        "houle courte": score_wave_period(candidates["houle courte"]),
+        "pluie":        score_rain(candidates["pluie"]),
     }
 
-    worst = min(scores_by_factor, key=lambda k: scores_by_factor[k] if scores_by_factor[k] is not None else 100)
+    worst = min(
+        scores_by_factor,
+        key=lambda k: scores_by_factor[k] if scores_by_factor[k] is not None else 100,
+    )
     return worst
 
 
@@ -229,13 +334,11 @@ def compute_scores(df: pd.DataFrame, config: dict) -> tuple[pd.DataFrame, list[d
     weights = config["scoring"]["weights"]
     thresholds = config["scoring"]["verdicts"]
 
-    # Score horaire
     df = df.copy()
     df["fishing_score"] = df.apply(
         lambda row: compute_hourly_score(row, weights), axis=1
     )
 
-    # Résumé journalier
     daily_summaries = []
     df["date"] = df["datetime"].apply(lambda dt: dt.date())
 
@@ -244,6 +347,7 @@ def compute_scores(df: pd.DataFrame, config: dict) -> tuple[pd.DataFrame, list[d
         verdict = get_verdict(daily_score, thresholds)
         best_window = _find_best_window(df_day)
         limiting = _main_limiting_factor(df_day, weights)
+        dominant_dir = _dominant_direction(df_day["wind_dir"]) if "wind_dir" in df_day else None
 
         summary = {
             "date": day,
@@ -251,9 +355,13 @@ def compute_scores(df: pd.DataFrame, config: dict) -> tuple[pd.DataFrame, list[d
             "verdict": verdict,
             "best_window": best_window,
             "limiting_factor": limiting,
-            "avg_wind_kmh": round(df_day["wind_kmh"].mean(), 1) if df_day["wind_kmh"].notna().any() else None,
-            "max_gust_kmh": round(df_day["gust_kmh"].max(), 1) if df_day["gust_kmh"].notna().any() else None,
+            "avg_wind_kts": round(df_day["wind_kts"].mean(), 1) if df_day["wind_kts"].notna().any() else None,
+            "max_gust_kts": round(df_day["gust_kts"].max(), 1) if df_day["gust_kts"].notna().any() else None,
+            "wind_dir": dominant_dir,
+            "wind_dir_arrow": wind_dir_arrow(dominant_dir),
+            "wind_dir_fr": wind_dir_fr(dominant_dir),
             "avg_wave_m": round(df_day["wave_height_m"].mean(), 2) if df_day["wave_height_m"].notna().any() else None,
+            "avg_wave_period_s": round(df_day["wave_period_s"].mean(), 1) if "wave_period_s" in df_day and df_day["wave_period_s"].notna().any() else None,
             "max_rain_mmh": round(df_day["rain_mmh"].max(), 1) if df_day["rain_mmh"].notna().any() else None,
             "avg_temp_c": round(df_day["temp_c"].mean(), 1) if df_day["temp_c"].notna().any() else None,
         }
