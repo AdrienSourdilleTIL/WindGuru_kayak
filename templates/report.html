@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rapport Pêche Kayak — {{ spot_name }} — {{ today_str }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f4f8;
+      color: #2d3748;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    /* En-tête */
+    .header {
+      background: linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%);
+      color: white;
+      padding: 28px 32px;
+      border-radius: 12px 12px 0 0;
+      text-align: center;
+    }
+    .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+    .header .subtitle { font-size: 14px; opacity: 0.85; margin-top: 4px; }
+
+    /* Carte */
+    .card {
+      background: white;
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .card h2 {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #718096;
+      margin-bottom: 16px;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 8px;
+    }
+
+    /* Score aujourd'hui */
+    .today-grid {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .score-circle {
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-weight: 700;
+    }
+    .score-circle .score-num { font-size: 28px; line-height: 1; }
+    .score-circle .score-label { font-size: 10px; opacity: 0.85; margin-top: 2px; }
+
+    .score-excellent { background: #c6f6d5; color: #276749; border: 3px solid #48bb78; }
+    .score-favorable  { background: #fefcbf; color: #744210; border: 3px solid #f6e05e; }
+    .score-moyen      { background: #feebc8; color: #7b341e; border: 3px solid #f6ad55; }
+    .score-deconseille{ background: #fed7d7; color: #742a2a; border: 3px solid #fc8181; }
+
+    .today-details { flex: 1; }
+    .today-details .verdict {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .today-details .meta {
+      font-size: 13px;
+      color: #4a5568;
+      line-height: 1.8;
+    }
+    .today-details .meta span { font-weight: 600; color: #2d3748; }
+
+    /* Badge créneau */
+    .window-badge {
+      display: inline-block;
+      background: #ebf8ff;
+      color: #2b6cb0;
+      border: 1px solid #bee3f8;
+      border-radius: 20px;
+      padding: 3px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-top: 6px;
+    }
+
+    /* Top 3 + jours à éviter */
+    .days-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .day-card {
+      border-radius: 8px;
+      padding: 14px 16px;
+      border-left: 4px solid;
+    }
+    .day-card.excellent  { background: #f0fff4; border-color: #48bb78; }
+    .day-card.favorable  { background: #fffff0; border-color: #d69e2e; }
+    .day-card.moyen      { background: #fffaf0; border-color: #ed8936; }
+    .day-card.deconseille{ background: #fff5f5; border-color: #fc8181; }
+
+    .day-card .day-name { font-weight: 700; font-size: 14px; }
+    .day-card .day-score { font-size: 22px; font-weight: 800; margin: 4px 0; }
+    .day-card .day-meta { font-size: 12px; color: #718096; line-height: 1.6; }
+    .day-card .day-verdict { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* Recommandation */
+    .recommendation {
+      background: #ebf8ff;
+      border: 1px solid #bee3f8;
+      border-radius: 8px;
+      padding: 16px 20px;
+      font-size: 14px;
+      line-height: 1.7;
+      color: #2c5282;
+    }
+
+    /* Graphiques */
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    .chart-img {
+      width: 100%;
+      border-radius: 6px;
+      border: 1px solid #e2e8f0;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      font-size: 11px;
+      color: #a0aec0;
+      padding: 16px;
+      background: white;
+      border-radius: 0 0 12px 12px;
+    }
+
+    /* Utilitaires */
+    .emoji { font-style: normal; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- En-tête -->
+  <div class="header">
+    <h1>🎣 Rapport Pêche Kayak — {{ spot_name }}</h1>
+    <div class="subtitle">{{ today_long }} &nbsp;·&nbsp; Modèle {{ model | upper }} &nbsp;·&nbsp; Généré à {{ generated_at }}</div>
+  </div>
+
+  <!-- Aujourd'hui -->
+  <div class="card" style="border-radius:0; margin-top:0;">
+    <h2>Aujourd'hui</h2>
+    {% if today_summary %}
+    <div class="today-grid">
+      <div class="score-circle score-{{ today_css }}">
+        <div class="score-num">{{ today_summary.daily_score | int }}</div>
+        <div class="score-label">/100</div>
+      </div>
+      <div class="today-details">
+        <div class="verdict">{{ today_summary.verdict }}</div>
+        <div class="meta">
+          {% if today_summary.avg_wind_kmh is not none %}
+          Vent moyen : <span>{{ today_summary.avg_wind_kmh }} km/h</span> &nbsp;|&nbsp;
+          {% endif %}
+          {% if today_summary.max_gust_kmh is not none %}
+          Rafales : <span>{{ today_summary.max_gust_kmh }} km/h</span>
+          {% endif %}
+          <br>
+          {% if today_summary.avg_wave_m is not none %}
+          Vagues : <span>{{ today_summary.avg_wave_m }} m</span> &nbsp;|&nbsp;
+          {% endif %}
+          {% if today_summary.avg_temp_c is not none %}
+          Température : <span>{{ today_summary.avg_temp_c }}°C</span>
+          {% endif %}
+        </div>
+        {% if today_summary.best_window != '–' %}
+        <div class="window-badge">⏱ Créneau idéal : {{ today_summary.best_window }}</div>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <p style="color:#718096;">Pas de données disponibles pour aujourd'hui.</p>
+    {% endif %}
+  </div>
+
+  <!-- Recommandation -->
+  <div class="card">
+    <h2>Recommandations</h2>
+    <div class="recommendation">{{ recommendation }}</div>
+  </div>
+
+  <!-- Top 3 meilleurs jours -->
+  {% if top_days %}
+  <div class="card">
+    <h2>Top 3 meilleurs jours (7 prochains jours)</h2>
+    <div class="days-grid">
+      {% for s in top_days %}
+      <div class="day-card {{ s.css_class }}">
+        <div class="day-name">{{ s.day_long }}</div>
+        <div class="day-score" style="color:{{ s.color }};">{{ s.daily_score | int }}</div>
+        <div class="day-verdict">{{ s.verdict }}</div>
+        <div class="day-meta">
+          {% if s.avg_wind_kmh is not none %}Vent ~{{ s.avg_wind_kmh }} km/h<br>{% endif %}
+          {% if s.avg_wave_m is not none %}Vagues ~{{ s.avg_wave_m }} m<br>{% endif %}
+          {% if s.best_window != '–' %}Créneau : {{ s.best_window }}{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Jours à éviter -->
+  {% if bad_days %}
+  <div class="card">
+    <h2>Jours à éviter (7 prochains jours)</h2>
+    <div class="days-grid">
+      {% for s in bad_days %}
+      <div class="day-card deconseille">
+        <div class="day-name">{{ s.day_long }}</div>
+        <div class="day-score" style="color:#e53e3e;">{{ s.daily_score | int }}</div>
+        <div class="day-verdict">{{ s.verdict }}</div>
+        <div class="day-meta">
+          Facteur limitant : {{ s.limiting_factor }}
+          {% if s.avg_wind_kmh is not none %}<br>Vent ~{{ s.avg_wind_kmh }} km/h{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Graphiques -->
+  <div class="card">
+    <h2>Prévisions 14 jours — Score de pêche</h2>
+    <img class="chart-img" src="data:image/png;base64,{{ charts.score }}" alt="Score 14 jours">
+  </div>
+
+  <div class="card">
+    <h2>Prévisions 14 jours — Vent et rafales</h2>
+    <img class="chart-img" src="data:image/png;base64,{{ charts.wind }}" alt="Vent 14 jours">
+  </div>
+
+  <div class="card">
+    <h2>Prévisions 14 jours — Hauteur des vagues</h2>
+    <img class="chart-img" src="data:image/png;base64,{{ charts.waves }}" alt="Vagues 14 jours">
+  </div>
+
+  <div class="card">
+    <h2>Prévisions 14 jours — Température et précipitations</h2>
+    <img class="chart-img" src="data:image/png;base64,{{ charts.temp_rain }}" alt="Température et pluie">
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    Données météo : Windguru (modèle {{ model | upper }}, spot {{ spot_id }}) &nbsp;·&nbsp;
+    Généré automatiquement par Kayak Fishing Forecast
+  </div>
+
+</div>
+</body>
+</html>

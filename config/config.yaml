@@ -1,0 +1,36 @@
+spot:
+  id: 48552
+  name: "La Couarde sur Mer"
+  island: "Île de Ré"
+  model: "gfs"
+  variables:
+    - WSPD
+    - GUST
+    - WDIRN
+    - HTSGW
+    - PERPW
+    - TMP
+    - APCP1
+
+fishing:
+  timezone: "Europe/Paris"
+  hours_start: 6
+  hours_end: 20
+  forecast_days: 14
+
+scoring:
+  weights:
+    wind: 0.30
+    gust: 0.20
+    wave: 0.30
+    rain: 0.10
+    temperature: 0.10
+  verdicts:
+    excellent: 70
+    favorable: 50
+    moyen: 30
+
+email:
+  smtp_host: "smtp.gmail.com"
+  smtp_port: 587
+  # Credentials via variables d'environnement : GMAIL_USER, GMAIL_APP_PASSWORD

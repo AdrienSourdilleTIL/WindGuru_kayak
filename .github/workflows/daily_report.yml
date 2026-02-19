@@ -1,0 +1,42 @@
+name: Daily Kayak Fishing Forecast
+
+on:
+  schedule:
+    # Tous les jours à 6h UTC = 7h en hiver (CET) / 8h en été (CEST) heure Paris
+    - cron: '0 6 * * *'
+  # Déclenchement manuel pour tester sans attendre le lendemain
+  workflow_dispatch:
+
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Installation Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Installation des dépendances
+        run: pip install -r requirements.txt
+
+      - name: Création des dossiers nécessaires
+        run: mkdir -p data/raw data/processed reports
+
+      - name: Exécution du pipeline forecast
+        run: python main.py
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+
+      - name: Upload du rapport comme artefact
+        if: always()  # Même en cas d'erreur partielle
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapport-peche-${{ github.run_id }}
+          path: reports/
+          retention-days: 7

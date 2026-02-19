@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "WebFetch(domain:stations.windguru.cz)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:copyprogramming.com)",
+      "WebFetch(domain:micro.windguru.cz)",
+      "WebFetch(domain:www.windguru.cz)",
+      "WebFetch(domain:community.home-assistant.io)",
+      "Bash(cmd /c:*)"
+    ]
+  }
+}
