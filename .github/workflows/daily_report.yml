@@ -2,8 +2,8 @@ name: Daily Kayak Fishing Forecast
 
 on:
   schedule:
-    # Tous les jours à 6h UTC = 7h en hiver (CET) / 8h en été (CEST) heure Paris
-    - cron: '0 6 * * *'
+    # Tous les jours à 3h UTC = 4h en hiver (CET) / 5h en été (CEST) heure Paris
+    - cron: '0 3 * * *'
   # Déclenchement manuel pour tester sans attendre le lendemain
   workflow_dispatch:
 
