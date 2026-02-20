@@ -411,6 +411,53 @@ def compute_scores(df: pd.DataFrame, config: dict) -> tuple[pd.DataFrame, list[d
 
 
 # ---------------------------------------------------------------------------
+# Couleurs par cellule pour le tableau horaire
+# ---------------------------------------------------------------------------
+
+def _cell_css_score(score: float) -> str:
+    if score >= 70: return "cell-green"
+    if score >= 30: return "cell-yellow"
+    return "cell-red"
+
+def _cell_css_wind(wind_kts: Optional[float]) -> str:
+    if wind_kts is None: return ""
+    if wind_kts <= 12: return "cell-green"
+    if wind_kts <= 22: return "cell-yellow"
+    return "cell-red"
+
+def _cell_css_gust(gust_kts: Optional[float]) -> str:
+    if gust_kts is None: return ""
+    if gust_kts <= 15: return "cell-green"
+    if gust_kts <= 25: return "cell-yellow"
+    return "cell-red"
+
+def _cell_css_wave(wave_m: Optional[float]) -> str:
+    if wave_m is None: return ""
+    if wave_m <= 0.5: return "cell-green"
+    if wave_m <= 1.2: return "cell-yellow"
+    return "cell-red"
+
+def _cell_css_period(period_s: Optional[float]) -> str:
+    """Longue période = meilleur (houle douce). Courte = mauvais (mer hachée)."""
+    if period_s is None: return ""
+    if period_s >= 10: return "cell-green"
+    if period_s >= 6:  return "cell-yellow"
+    return "cell-red"
+
+def _cell_css_rain(rain_mmh: Optional[float]) -> str:
+    if rain_mmh is None: return ""
+    if rain_mmh <= 0.5: return "cell-green"
+    if rain_mmh <= 3:   return "cell-yellow"
+    return "cell-red"
+
+def _cell_css_temp(temp_c: Optional[float]) -> str:
+    if temp_c is None: return ""
+    if 14 <= temp_c <= 26: return "cell-green"
+    if 8  <= temp_c <= 32: return "cell-yellow"
+    return "cell-red"
+
+
+# ---------------------------------------------------------------------------
 # Données horaires aujourd'hui
 # ---------------------------------------------------------------------------
 
@@ -437,25 +484,40 @@ def get_today_hourly(df_scored: pd.DataFrame, config: dict) -> list[dict]:
         score = float(row.get("fishing_score", 0))
         verdict = get_verdict(score, thresholds)
 
-        wind = row.get("wind_kts")
-        gust = row.get("gust_kts")
-        wave = row.get("wave_height_m")
+        wind   = row.get("wind_kts")
+        gust   = row.get("gust_kts")
+        wave   = row.get("wave_height_m")
         period = row.get("wave_period_s")
-        rain = row.get("rain_mmh")
-        temp = row.get("temp_c")
+        rain   = row.get("rain_mmh")
+        temp   = row.get("temp_c")
+
+        wind_val   = float(wind)   if wind   is not None and pd.notna(wind)   else None
+        gust_val   = float(gust)   if gust   is not None and pd.notna(gust)   else None
+        wave_val   = float(wave)   if wave   is not None and pd.notna(wave)   else None
+        period_val = float(period) if period is not None and pd.notna(period) else None
+        rain_val   = float(rain)   if rain   is not None and pd.notna(rain)   else None
+        temp_val   = float(temp)   if temp   is not None and pd.notna(temp)   else None
 
         rows.append({
-            "hour":         row["datetime"].hour,
-            "time_str":     f"{row['datetime'].hour:02d}h",
-            "score":        score,
-            "verdict":      verdict,
-            "css_class":    _verdict_css(verdict),
-            "wind_kts":     round(wind, 1) if wind is not None and pd.notna(wind) else None,
-            "gust_kts":     round(gust, 1) if gust is not None and pd.notna(gust) else None,
-            "wave_height_m": round(wave, 2) if wave is not None and pd.notna(wave) else None,
-            "wave_period_s": round(period, 1) if period is not None and pd.notna(period) else None,
-            "rain_mmh":     round(rain, 1) if rain is not None and pd.notna(rain) else None,
-            "temp_c":       round(temp, 1) if temp is not None and pd.notna(temp) else None,
+            "hour":          row["datetime"].hour,
+            "time_str":      f"{row['datetime'].hour:02d}h",
+            "score":         score,
+            "verdict":       verdict,
+            "css_class":     _verdict_css(verdict),
+            "wind_kts":      round(wind_val, 1)   if wind_val   is not None else None,
+            "gust_kts":      round(gust_val, 1)   if gust_val   is not None else None,
+            "wave_height_m": round(wave_val, 2)   if wave_val   is not None else None,
+            "wave_period_s": round(period_val, 1) if period_val is not None else None,
+            "rain_mmh":      round(rain_val, 1)   if rain_val   is not None else None,
+            "temp_c":        round(temp_val, 1)   if temp_val   is not None else None,
+            # Couleurs par cellule
+            "cell_score":    _cell_css_score(score),
+            "cell_wind":     _cell_css_wind(wind_val),
+            "cell_gust":     _cell_css_gust(gust_val),
+            "cell_wave":     _cell_css_wave(wave_val),
+            "cell_period":   _cell_css_period(period_val),
+            "cell_rain":     _cell_css_rain(rain_val),
+            "cell_temp":     _cell_css_temp(temp_val),
         })
 
     return rows
@@ -500,9 +562,9 @@ def compute_3h_windows(df_scored: pd.DataFrame, config: dict, n_days: int = 3) -
             lambda dt: (dt.hour - hours_start) // 3
         )
 
-        for _, slot_df in df_day.groupby("_slot"):
-            start_h = slot_df.iloc[0]["datetime"].hour
-            end_h   = slot_df.iloc[-1]["datetime"].hour
+        for slot_key, slot_df in df_day.groupby("_slot"):
+            start_h = hours_start + int(slot_key) * 3
+            end_h   = start_h + 2
 
             score   = round(float(slot_df["fishing_score"].mean()), 1)
             verdict = get_verdict(score, thresholds)

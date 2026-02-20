@@ -106,8 +106,13 @@
     .hourly-table td:first-child { text-align: left; font-weight: 600; }
     .hourly-table tr:hover { background: #f7fafc; }
 
-    /* Ligne mise en valeur (meilleure heure) */
-    .hourly-table tr.best-row td { background: #f0fff4; }
+    /* Cellules colorées individuellement */
+    .hourly-table td.cell-green  { background: #f0fff4; }
+    .hourly-table td.cell-yellow { background: #fefcbf; }
+    .hourly-table td.cell-red    { background: #fff5f5; }
+
+    /* Meilleure heure : vert plus soutenu (efface les couleurs par cellule) */
+    .hourly-table tr.best-row td            { background: #c6f6d5 !important; }
     .hourly-table tr.best-row td:first-child { color: #276749; }
 
     /* Badge score inline */
@@ -283,6 +288,13 @@
           {% if today_summary.avg_temp_c is not none %}
           Température : <span>{{ today_summary.avg_temp_c }}°C</span>
           {% endif %}
+          {% if today_summary.best_window and today_summary.best_window != '–' %}
+          <br>
+          Meilleur créneau : <span>{{ today_summary.best_window }}</span>
+          {% if today_summary.limiting_factor %}
+          &nbsp;|&nbsp; Facteur limitant : <span>{{ today_summary.limiting_factor }}</span>
+          {% endif %}
+          {% endif %}
         </div>
       </div>
     </div>
@@ -304,18 +316,18 @@
       </thead>
       <tbody>
         {% for h in today_hourly %}
-        <tr class="{% if h.score == best_hourly_score and h.score > 30 %}best-row{% endif %}">
+        <tr{% if h.score == best_hourly_score and h.score > 30 %} class="best-row"{% endif %}>
           <td>
             {{ h.time_str }}
             {% if h.score == best_hourly_score and h.score > 30 %}<span class="tag-best">top</span>{% endif %}
           </td>
-          <td><span class="score-badge {{ h.css_class }}">{{ h.score | int }}</span></td>
-          <td>{% if h.wind_kts is not none %}{{ h.wind_kts }}{% else %}<span class="na">–</span>{% endif %}</td>
-          <td>{% if h.gust_kts is not none %}{{ h.gust_kts }}{% else %}<span class="na">–</span>{% endif %}</td>
-          <td>{% if h.wave_height_m is not none %}{{ h.wave_height_m }}{% else %}<span class="na">–</span>{% endif %}</td>
-          <td>{% if h.wave_period_s is not none %}{{ h.wave_period_s }}{% else %}<span class="na">–</span>{% endif %}</td>
-          <td>{% if h.rain_mmh is not none %}{{ h.rain_mmh }}{% else %}<span class="na">–</span>{% endif %}</td>
-          <td>{% if h.temp_c is not none %}{{ h.temp_c }}{% else %}<span class="na">–</span>{% endif %}</td>
+          <td class="{{ h.cell_score }}"><span class="score-badge {{ h.css_class }}">{{ h.score | int }}</span></td>
+          <td class="{{ h.cell_wind }}">{% if h.wind_kts is not none %}{{ h.wind_kts }}{% else %}<span class="na">–</span>{% endif %}</td>
+          <td class="{{ h.cell_gust }}">{% if h.gust_kts is not none %}{{ h.gust_kts }}{% else %}<span class="na">–</span>{% endif %}</td>
+          <td class="{{ h.cell_wave }}">{% if h.wave_height_m is not none %}{{ h.wave_height_m }}{% else %}<span class="na">–</span>{% endif %}</td>
+          <td class="{{ h.cell_period }}">{% if h.wave_period_s is not none %}{{ h.wave_period_s }}{% else %}<span class="na">–</span>{% endif %}</td>
+          <td class="{{ h.cell_rain }}">{% if h.rain_mmh is not none %}{{ h.rain_mmh }}{% else %}<span class="na">–</span>{% endif %}</td>
+          <td class="{{ h.cell_temp }}">{% if h.temp_c is not none %}{{ h.temp_c }}{% else %}<span class="na">–</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -389,27 +401,6 @@
   <div class="card">
     <h2>Recommandations</h2>
     <div class="recommendation">{{ recommendation }}</div>
-  </div>
-
-  <!-- ══ Graphiques ═══════════════════════════════════════════════════ -->
-  <div class="card">
-    <h2>Prévisions 14 jours — Score de pêche</h2>
-    <img class="chart-img" src="{{ charts.score }}" alt="Score 14 jours">
-  </div>
-
-  <div class="card">
-    <h2>Prévisions 14 jours — Vent et rafales (nœuds)</h2>
-    <img class="chart-img" src="{{ charts.wind }}" alt="Vent 14 jours">
-  </div>
-
-  <div class="card">
-    <h2>Prévisions 14 jours — Hauteur et période des vagues</h2>
-    <img class="chart-img" src="{{ charts.waves }}" alt="Vagues 14 jours">
-  </div>
-
-  <div class="card">
-    <h2>Prévisions 14 jours — Température et précipitations</h2>
-    <img class="chart-img" src="{{ charts.temp_rain }}" alt="Température et pluie">
   </div>
 
   <!-- ══ Footer ═══════════════════════════════════════════════════════ -->
