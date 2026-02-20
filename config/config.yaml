@@ -24,8 +24,8 @@ scoring:
   weights:
     wind: 0.25         # Vent moyen (nœuds) — idéal < 15 kts
     gust: 0.20         # Rafales (nœuds) — idéal < 17 kts
-    wave_height: 0.20  # Hauteur vagues (m) — idéal < 1.2m
-    wave_period: 0.15  # Période vagues (s) — idéal > 12s
+    wave_height: 0.15  # Hauteur vagues (m) — idéal < 1.2m
+    wave_period: 0.20  # Période vagues (s) — idéal > 12s (raideur H/T dans malus)
     rain: 0.10         # Précipitations (mm/h)
     temperature: 0.10  # Température (°C)
   verdicts:

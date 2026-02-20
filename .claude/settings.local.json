@@ -13,7 +13,8 @@
       "Bash(python main.py:*)",
       "mcp__filesystem__directory_tree",
       "mcp__filesystem__read_multiple_files",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "mcp__filesystem__read_text_file"
     ]
   }
 }

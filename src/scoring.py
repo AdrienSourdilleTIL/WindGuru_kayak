@@ -1,15 +1,18 @@
 """
-scoring.py — Algorithme "Fishing Suitability Score" pour le kayak pêche (V2).
+scoring.py — Algorithme "Fishing Suitability Score" pour le kayak pêche (V3).
 
 Calcule un score 0-100 par créneau horaire, puis un score journalier agrégé.
-Le vent est en nœuds. La période des vagues est intégrée au score.
+Le vent est en nœuds. La période des vagues interagit avec la hauteur via
+un critère de raideur (H/T) dans le malus bloquant.
 Un malus bloquant plafonne le score à 20 si les conditions sont rédhibitoires.
 """
 
 import logging
+from datetime import date, timedelta
 from typing import Optional
 
 import pandas as pd
+import pytz
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +60,15 @@ def _dominant_direction(series: pd.Series) -> Optional[str]:
     if clean.empty:
         return None
     return clean.mode().iloc[0]
+
+
+def _verdict_css(verdict: str) -> str:
+    return {
+        "Excellent":   "excellent",
+        "Favorable":   "favorable",
+        "Moyen":       "moyen",
+        "Déconseillé": "deconseille",
+    }.get(verdict, "moyen")
 
 
 # ---------------------------------------------------------------------------
@@ -119,16 +131,21 @@ def score_gust(gust_kts: Optional[float]) -> float:
 
 
 def score_wave_height(wave_m: Optional[float]) -> float:
-    """Score hauteur vagues en mètres. Idéal : < 0.5m. Rédhibitoire : > 1.2m."""
+    """
+    Score hauteur vagues en mètres.
+    Courbe assouplie par rapport à V2 : la période complète désormais le scoring
+    via le critère de raideur dans le malus bloquant.
+    Idéal : < 0.5m. Limite absolue : > 2.0m.
+    """
     if wave_m is None:
         return 50.0
     return _piecewise_linear(wave_m, [
         (0.0, 100),
         (0.5, 100),
-        (0.8,  70),
-        (1.0,  35),
-        (1.2,   5),
-        (1.5,   0),
+        (0.8,  75),
+        (1.2,  40),
+        (1.5,  10),
+        (2.0,   0),
     ])
 
 
@@ -185,7 +202,7 @@ def score_temp(temp_c: Optional[float]) -> float:
 # ---------------------------------------------------------------------------
 
 def _blocking_malus(wind_kts: Optional[float], gust_kts: Optional[float],
-                    wave_m: Optional[float]) -> bool:
+                    wave_m: Optional[float], period_s: Optional[float] = None) -> bool:
     """
     Retourne True si les conditions sont rédhibitoires pour le kayak.
     Dans ce cas, le score sera plafonné à 20/100.
@@ -193,14 +210,29 @@ def _blocking_malus(wind_kts: Optional[float], gust_kts: Optional[float],
     Critères bloquants :
     - Vent moyen > 25 kts  (force 6 Beaufort)
     - Rafales > 30 kts
-    - Vagues > 1.2m
+    - Vagues > 2.0m  (limite absolue)
+    - Raideur H/T > 0.18  (mer hachée/cassante — ex: 1m/5s = 0.20 → bloqué)
+    - Si période inconnue : hauteur > 1.4m (conservateur)
+
+    La raideur H/T permet de différencier :
+      1m / 5s  → steepness 0.20 → bloqué   (vague courte et cassante)
+      1.5m / 14s → steepness 0.107 → libre  (houle longue gérable)
     """
     if wind_kts is not None and wind_kts > 25:
         return True
     if gust_kts is not None and gust_kts > 30:
         return True
-    if wave_m is not None and wave_m > 1.2:
-        return True
+    if wave_m is not None:
+        if wave_m > 2.0:
+            return True
+        if period_s is not None and period_s > 0:
+            steepness = wave_m / period_s
+            if steepness > 0.18:
+                return True
+        else:
+            # Période inconnue : critère hauteur conservateur
+            if wave_m > 1.4:
+                return True
     return False
 
 
@@ -235,14 +267,14 @@ def compute_hourly_score(row: pd.Series, weights: dict) -> float:
     total = (
         s_wind   * weights.get("wind", 0.25)
         + s_gust   * weights.get("gust", 0.20)
-        + s_wave_h * weights.get("wave_height", 0.20)
-        + s_wave_p * weights.get("wave_period", 0.15)
+        + s_wave_h * weights.get("wave_height", 0.15)
+        + s_wave_p * weights.get("wave_period", 0.20)
         + s_rain   * weights.get("rain", 0.10)
         + s_temp   * weights.get("temperature", 0.10)
     )
 
     # Malus bloquant : plafonner à 20 si conditions rédhibitoires
-    if _blocking_malus(wind_kts, gust_kts, wave_m):
+    if _blocking_malus(wind_kts, gust_kts, wave_m, period_s):
         total = min(total, 20.0)
 
     return round(total, 1)
@@ -376,3 +408,125 @@ def compute_scores(df: pd.DataFrame, config: dict) -> tuple[pd.DataFrame, list[d
     )
 
     return df.drop(columns=["date"]), daily_summaries
+
+
+# ---------------------------------------------------------------------------
+# Données horaires aujourd'hui
+# ---------------------------------------------------------------------------
+
+def get_today_hourly(df_scored: pd.DataFrame, config: dict) -> list[dict]:
+    """
+    Retourne la liste des scores horaires pour aujourd'hui.
+
+    Args:
+        df_scored: DataFrame scoré (avec colonne 'fishing_score').
+        config:    Configuration chargée depuis config.yaml.
+
+    Returns:
+        Liste de dicts horaires triés par heure, avec score, conditions et verdict.
+    """
+    tz = pytz.timezone(config["fishing"]["timezone"])
+    today = pd.Timestamp.now(tz=tz).date()
+    thresholds = config["scoring"]["verdicts"]
+
+    df_today = df_scored[df_scored["datetime"].apply(lambda dt: dt.date()) == today].copy()
+    df_today = df_today.sort_values("datetime")
+
+    rows = []
+    for _, row in df_today.iterrows():
+        score = float(row.get("fishing_score", 0))
+        verdict = get_verdict(score, thresholds)
+
+        wind = row.get("wind_kts")
+        gust = row.get("gust_kts")
+        wave = row.get("wave_height_m")
+        period = row.get("wave_period_s")
+        rain = row.get("rain_mmh")
+        temp = row.get("temp_c")
+
+        rows.append({
+            "hour":         row["datetime"].hour,
+            "time_str":     f"{row['datetime'].hour:02d}h",
+            "score":        score,
+            "verdict":      verdict,
+            "css_class":    _verdict_css(verdict),
+            "wind_kts":     round(wind, 1) if wind is not None and pd.notna(wind) else None,
+            "gust_kts":     round(gust, 1) if gust is not None and pd.notna(gust) else None,
+            "wave_height_m": round(wave, 2) if wave is not None and pd.notna(wave) else None,
+            "wave_period_s": round(period, 1) if period is not None and pd.notna(period) else None,
+            "rain_mmh":     round(rain, 1) if rain is not None and pd.notna(rain) else None,
+            "temp_c":       round(temp, 1) if temp is not None and pd.notna(temp) else None,
+        })
+
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# Créneaux de 3 heures pour les prochains jours
+# ---------------------------------------------------------------------------
+
+def compute_3h_windows(df_scored: pd.DataFrame, config: dict, n_days: int = 3) -> list[dict]:
+    """
+    Calcule les résumés par créneaux de 3h pour les n_days prochains jours.
+
+    Args:
+        df_scored: DataFrame scoré (avec colonne 'fishing_score').
+        config:    Configuration chargée depuis config.yaml.
+        n_days:    Nombre de jours à partir de demain (défaut : 3).
+
+    Returns:
+        Liste de dicts, un par créneau, avec date, slot horaire, score, conditions.
+    """
+    tz = pytz.timezone(config["fishing"]["timezone"])
+    today = pd.Timestamp.now(tz=tz).date()
+    thresholds = config["scoring"]["verdicts"]
+    hours_start = config["fishing"].get("hours_start", 6)
+
+    df = df_scored.copy()
+    df["_date"] = df["datetime"].apply(lambda dt: dt.date())
+
+    windows = []
+
+    for i in range(1, n_days + 1):
+        day = today + timedelta(days=i)
+        df_day = df[df["_date"] == day].sort_values("datetime")
+
+        if df_day.empty:
+            continue
+
+        # Grouper par tranches de 3h depuis hours_start
+        df_day = df_day.copy()
+        df_day["_slot"] = df_day["datetime"].apply(
+            lambda dt: (dt.hour - hours_start) // 3
+        )
+
+        for _, slot_df in df_day.groupby("_slot"):
+            start_h = slot_df.iloc[0]["datetime"].hour
+            end_h   = slot_df.iloc[-1]["datetime"].hour
+
+            score   = round(float(slot_df["fishing_score"].mean()), 1)
+            verdict = get_verdict(score, thresholds)
+
+            avg_wind   = round(slot_df["wind_kts"].mean(), 1) if slot_df["wind_kts"].notna().any() else None
+            max_gust   = round(slot_df["gust_kts"].max(), 1)  if slot_df["gust_kts"].notna().any() else None
+            avg_wave   = round(slot_df["wave_height_m"].mean(), 2) if slot_df["wave_height_m"].notna().any() else None
+            avg_period = round(slot_df["wave_period_s"].mean(), 1) if "wave_period_s" in slot_df and slot_df["wave_period_s"].notna().any() else None
+            max_rain   = round(slot_df["rain_mmh"].max(), 1)  if slot_df["rain_mmh"].notna().any() else None
+            dominant_dir = _dominant_direction(slot_df["wind_dir"]) if "wind_dir" in slot_df else None
+
+            windows.append({
+                "date":          day,
+                "slot":          f"{start_h:02d}h–{end_h:02d}h",
+                "score":         score,
+                "verdict":       verdict,
+                "css_class":     _verdict_css(verdict),
+                "avg_wind_kts":  avg_wind,
+                "max_gust_kts":  max_gust,
+                "wind_dir":      dominant_dir,
+                "wind_dir_arrow": wind_dir_arrow(dominant_dir),
+                "avg_wave_m":    avg_wave,
+                "avg_period_s":  avg_period,
+                "max_rain_mmh":  max_rain,
+            })
+
+    return windows

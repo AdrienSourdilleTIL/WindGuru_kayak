@@ -19,7 +19,7 @@
       margin: 0 auto;
     }
 
-    /* En-tête */
+    /* ── En-tête ─────────────────────────────────────────── */
     .header {
       background: linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%);
       color: white;
@@ -30,7 +30,7 @@
     .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
     .header .subtitle { font-size: 14px; opacity: 0.85; margin-top: 4px; }
 
-    /* Carte */
+    /* ── Carte ───────────────────────────────────────────── */
     .card {
       background: white;
       border-radius: 8px;
@@ -48,25 +48,15 @@
       padding-bottom: 8px;
     }
 
-    /* Score aujourd'hui */
-    .today-grid {
-      display: flex;
-      align-items: center;
-      gap: 24px;
-      flex-wrap: wrap;
-    }
+    /* ── Score cercle ────────────────────────────────────── */
     .score-circle {
-      width: 90px;
-      height: 90px;
+      width: 90px; height: 90px;
       border-radius: 50%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      font-weight: 700;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      flex-shrink: 0; font-weight: 700;
     }
-    .score-circle .score-num { font-size: 28px; line-height: 1; }
+    .score-circle .score-num  { font-size: 28px; line-height: 1; }
     .score-circle .score-label { font-size: 10px; opacity: 0.85; margin-top: 2px; }
 
     .score-excellent  { background: #c6f6d5; color: #276749; border: 3px solid #48bb78; }
@@ -74,91 +64,143 @@
     .score-moyen      { background: #feebc8; color: #7b341e; border: 3px solid #f6ad55; }
     .score-deconseille{ background: #fed7d7; color: #742a2a; border: 3px solid #fc8181; }
 
+    /* ── Résumé aujourd'hui (header de section) ──────────── */
+    .today-grid { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
     .today-details { flex: 1; }
-    .today-details .verdict {
-      font-size: 20px;
-      font-weight: 700;
-      margin-bottom: 8px;
-    }
-    .today-details .meta {
-      font-size: 13px;
-      color: #4a5568;
-      line-height: 2.0;
-    }
+    .today-details .verdict { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+    .today-details .meta { font-size: 13px; color: #4a5568; line-height: 2.0; }
     .today-details .meta span { font-weight: 600; color: #2d3748; }
 
-    /* Badge créneau */
-    .window-badge {
-      display: inline-block;
-      background: #ebf8ff;
-      color: #2b6cb0;
-      border: 1px solid #bee3f8;
-      border-radius: 20px;
-      padding: 3px 12px;
-      font-size: 13px;
-      font-weight: 600;
-      margin-top: 6px;
-    }
-
-    /* Badge direction vent */
     .wind-dir-badge {
       display: inline-block;
-      background: #f7fafc;
-      color: #4a5568;
-      border: 1px solid #e2e8f0;
-      border-radius: 6px;
-      padding: 2px 8px;
-      font-size: 12px;
+      background: #f7fafc; color: #4a5568;
+      border: 1px solid #e2e8f0; border-radius: 6px;
+      padding: 2px 8px; font-size: 12px; font-weight: 600; margin-left: 4px;
+    }
+
+    /* ── Tableau horaire ─────────────────────────────────── */
+    .hourly-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 16px;
+    }
+    .hourly-table th {
+      text-align: center;
+      font-size: 11px;
       font-weight: 600;
-      margin-left: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #718096;
+      padding: 6px 8px;
+      border-bottom: 2px solid #e2e8f0;
+      background: #f7fafc;
     }
+    .hourly-table th:first-child { text-align: left; }
+    .hourly-table td {
+      text-align: center;
+      padding: 7px 8px;
+      border-bottom: 1px solid #f0f4f8;
+      vertical-align: middle;
+    }
+    .hourly-table td:first-child { text-align: left; font-weight: 600; }
+    .hourly-table tr:hover { background: #f7fafc; }
 
-    /* Grille données vagues */
-    .wave-grid {
-      display: flex;
-      gap: 16px;
-      flex-wrap: wrap;
-      margin-top: 4px;
-    }
-    .wave-stat {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      background: #f0fff4;
-      border: 1px solid #c6f6d5;
-      border-radius: 8px;
-      padding: 8px 16px;
-      min-width: 90px;
-    }
-    .wave-stat .wval { font-size: 20px; font-weight: 700; color: #276749; }
-    .wave-stat .wlab { font-size: 10px; color: #718096; text-transform: uppercase; margin-top: 2px; }
-    .wave-stat.period { background: #f5f3ff; border-color: #d6bcfa; }
-    .wave-stat.period .wval { color: #553c9a; }
-    .wave-stat.bad { background: #fff5f5; border-color: #fed7d7; }
-    .wave-stat.bad .wval { color: #c53030; }
+    /* Ligne mise en valeur (meilleure heure) */
+    .hourly-table tr.best-row td { background: #f0fff4; }
+    .hourly-table tr.best-row td:first-child { color: #276749; }
 
-    /* Top 3 + jours à éviter */
-    .days-grid {
+    /* Badge score inline */
+    .score-badge {
+      display: inline-block;
+      border-radius: 12px;
+      padding: 2px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      min-width: 42px;
+      text-align: center;
+    }
+    .score-badge.excellent  { background: #c6f6d5; color: #276749; }
+    .score-badge.favorable  { background: #fefcbf; color: #744210; }
+    .score-badge.moyen      { background: #feebc8; color: #7b341e; }
+    .score-badge.deconseille{ background: #fed7d7; color: #742a2a; }
+
+    /* ── Grille créneaux 3h ──────────────────────────────── */
+    .windows-days-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
     }
-    .day-card {
-      border-radius: 8px;
-      padding: 14px 16px;
+    .window-day-col { }
+    .window-day-header {
+      font-weight: 700;
+      font-size: 14px;
+      color: #2d3748;
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+    .window-slot {
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
       border-left: 4px solid;
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
-    .day-card.excellent   { background: #f0fff4; border-color: #48bb78; }
-    .day-card.favorable   { background: #fffff0; border-color: #d69e2e; }
-    .day-card.moyen       { background: #fffaf0; border-color: #ed8936; }
-    .day-card.deconseille { background: #fff5f5; border-color: #fc8181; }
+    .window-slot.excellent  { background: #f0fff4; border-color: #48bb78; }
+    .window-slot.favorable  { background: #fffff0; border-color: #d69e2e; }
+    .window-slot.moyen      { background: #fffaf0; border-color: #ed8936; }
+    .window-slot.deconseille{ background: #fff5f5; border-color: #fc8181; }
 
-    .day-card .day-name    { font-weight: 700; font-size: 14px; }
-    .day-card .day-score   { font-size: 22px; font-weight: 800; margin: 4px 0; }
-    .day-card .day-meta    { font-size: 12px; color: #718096; line-height: 1.7; }
-    .day-card .day-verdict { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .window-slot .slot-time {
+      font-size: 12px; font-weight: 700; color: #4a5568;
+      min-width: 72px;
+    }
+    .window-slot .slot-score {
+      font-size: 18px; font-weight: 800;
+      min-width: 36px; text-align: center;
+    }
+    .window-slot.excellent  .slot-score { color: #276749; }
+    .window-slot.favorable  .slot-score { color: #744210; }
+    .window-slot.moyen      .slot-score { color: #7b341e; }
+    .window-slot.deconseille .slot-score { color: #742a2a; }
 
-    /* Recommandation */
+    .window-slot .slot-meta {
+      font-size: 11px; color: #718096; line-height: 1.6; flex: 1;
+    }
+
+    /* ── Tableau 14 jours ────────────────────────────────── */
+    .days14-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .days14-table th {
+      text-align: center;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #718096;
+      padding: 6px 8px;
+      border-bottom: 2px solid #e2e8f0;
+      background: #f7fafc;
+    }
+    .days14-table th:first-child { text-align: left; }
+    .days14-table td {
+      padding: 7px 8px;
+      text-align: center;
+      border-bottom: 1px solid #f0f4f8;
+      vertical-align: middle;
+    }
+    .days14-table td:first-child { text-align: left; font-weight: 600; font-size: 13px; }
+    .days14-table tr:hover { background: #f7fafc; }
+    .days14-table tr.today-row td { background: #ebf8ff; }
+    .days14-table tr.today-row td:first-child { color: #2b6cb0; }
+
+    /* ── Recommandation ──────────────────────────────────── */
     .recommendation {
       background: #ebf8ff;
       border: 1px solid #bee3f8;
@@ -169,8 +211,7 @@
       color: #2c5282;
     }
 
-    /* Graphiques */
-    .chart-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    /* ── Graphiques ──────────────────────────────────────── */
     .chart-img {
       width: 100%;
       border-radius: 6px;
@@ -178,7 +219,7 @@
       display: block;
     }
 
-    /* Footer */
+    /* ── Footer ──────────────────────────────────────────── */
     .footer {
       text-align: center;
       font-size: 11px;
@@ -187,22 +228,34 @@
       background: white;
       border-radius: 0 0 12px 12px;
     }
+
+    /* ── Divers ──────────────────────────────────────────── */
+    .na { color: #cbd5e0; }
+    .tag-best {
+      display: inline-block;
+      background: #276749; color: white;
+      border-radius: 4px; padding: 1px 5px;
+      font-size: 9px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.4px;
+      margin-left: 4px; vertical-align: middle;
+    }
   </style>
 </head>
 <body>
 <div class="container">
 
-  <!-- En-tête -->
+  <!-- ══ En-tête ══════════════════════════════════════════════════════ -->
   <div class="header">
     <h1>🎣 Rapport Pêche Kayak — {{ spot_name }}</h1>
     <div class="subtitle">{{ today_long }} &nbsp;·&nbsp; Modèle {{ model | upper }} &nbsp;·&nbsp; Généré à {{ generated_at }}</div>
   </div>
 
-  <!-- Aujourd'hui -->
+  <!-- ══ SECTION 1 : Aujourd'hui heure par heure ══════════════════════ -->
   <div class="card" style="border-radius:0; margin-top:0;">
-    <h2>Aujourd'hui</h2>
+    <h2>Aujourd'hui — heure par heure</h2>
+
     {% if today_summary %}
-    <div class="today-grid">
+    <div class="today-grid" style="margin-bottom:20px;">
       <div class="score-circle score-{{ today_css }}">
         <div class="score-num">{{ today_summary.daily_score | int }}</div>
         <div class="score-label">/100</div>
@@ -231,75 +284,114 @@
           Température : <span>{{ today_summary.avg_temp_c }}°C</span>
           {% endif %}
         </div>
-        {% if today_summary.best_window != '–' %}
-        <div class="window-badge">⏱ Créneau idéal : {{ today_summary.best_window }}</div>
-        {% endif %}
       </div>
     </div>
+    {% endif %}
+
+    {% if today_hourly %}
+    <table class="hourly-table">
+      <thead>
+        <tr>
+          <th>Heure</th>
+          <th>Score</th>
+          <th>Vent (kts)</th>
+          <th>Rafales (kts)</th>
+          <th>Vagues (m)</th>
+          <th>Période (s)</th>
+          <th>Pluie (mm/h)</th>
+          <th>Temp (°C)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for h in today_hourly %}
+        <tr class="{% if h.score == best_hourly_score and h.score > 30 %}best-row{% endif %}">
+          <td>
+            {{ h.time_str }}
+            {% if h.score == best_hourly_score and h.score > 30 %}<span class="tag-best">top</span>{% endif %}
+          </td>
+          <td><span class="score-badge {{ h.css_class }}">{{ h.score | int }}</span></td>
+          <td>{% if h.wind_kts is not none %}{{ h.wind_kts }}{% else %}<span class="na">–</span>{% endif %}</td>
+          <td>{% if h.gust_kts is not none %}{{ h.gust_kts }}{% else %}<span class="na">–</span>{% endif %}</td>
+          <td>{% if h.wave_height_m is not none %}{{ h.wave_height_m }}{% else %}<span class="na">–</span>{% endif %}</td>
+          <td>{% if h.wave_period_s is not none %}{{ h.wave_period_s }}{% else %}<span class="na">–</span>{% endif %}</td>
+          <td>{% if h.rain_mmh is not none %}{{ h.rain_mmh }}{% else %}<span class="na">–</span>{% endif %}</td>
+          <td>{% if h.temp_c is not none %}{{ h.temp_c }}{% else %}<span class="na">–</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
     {% else %}
-    <p style="color:#718096;">Pas de données disponibles pour aujourd'hui.</p>
+    <p style="color:#718096; font-size:13px;">Pas de données horaires disponibles pour aujourd'hui.</p>
     {% endif %}
   </div>
 
-  <!-- Recommandation -->
+  <!-- ══ SECTION 2 : Créneaux 3h — 3 prochains jours ════════════════ -->
+  {% if windows_by_day %}
+  <div class="card">
+    <h2>3 prochains jours — créneaux de 3 heures</h2>
+    <div class="windows-days-grid">
+      {% for day_group in windows_by_day %}
+      <div class="window-day-col">
+        <div class="window-day-header">{{ day_group.day_long }}</div>
+        {% for w in day_group.windows %}
+        <div class="window-slot {{ w.css_class }}">
+          <div class="slot-time">{{ w.slot }}</div>
+          <div class="slot-score">{{ w.score | int }}</div>
+          <div class="slot-meta">
+            {% if w.avg_wind_kts is not none %}💨 {{ w.avg_wind_kts }} kts{% if w.wind_dir_arrow %} {{ w.wind_dir_arrow }}{% endif %}{% if w.max_gust_kts is not none %} ({{ w.max_gust_kts }}){% endif %}<br>{% endif %}
+            {% if w.avg_wave_m is not none %}🌊 {{ w.avg_wave_m }} m{% if w.avg_period_s is not none %} · {{ w.avg_period_s }}s{% endif %}<br>{% endif %}
+            {% if w.max_rain_mmh is not none and w.max_rain_mmh > 0 %}🌧 {{ w.max_rain_mmh }} mm/h{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ══ SECTION 3 : Résumé 14 jours ═════════════════════════════════ -->
+  <div class="card">
+    <h2>Prévision 14 jours — résumé journalier</h2>
+    <table class="days14-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Score</th>
+          <th>Verdict</th>
+          <th>Vent moy.</th>
+          <th>Rafales max</th>
+          <th>Vagues</th>
+          <th>Période</th>
+          <th>Pluie max</th>
+          <th>Meilleur créneau</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in all_days %}
+        <tr class="{% if s.date.isoformat() == today_str %}today-row{% endif %}">
+          <td>{{ s.day_short }}{% if s.date.isoformat() == today_str %} <span class="tag-best" style="background:#2b6cb0;">auj.</span>{% endif %}</td>
+          <td><span class="score-badge {{ s.css_class }}">{{ s.daily_score | int }}</span></td>
+          <td style="font-size:11px; font-weight:600; color:{{ s.color }};">{{ s.verdict }}</td>
+          <td>{% if s.avg_wind_kts is not none %}{{ s.avg_wind_kts }}{% if s.wind_dir_arrow %} {{ s.wind_dir_arrow }}{% endif %}{% else %}<span class="na">–</span>{% endif %}</td>
+          <td>{% if s.max_gust_kts is not none %}{{ s.max_gust_kts }}{% else %}<span class="na">–</span>{% endif %}</td>
+          <td>{% if s.avg_wave_m is not none %}{{ s.avg_wave_m }} m{% else %}<span class="na">–</span>{% endif %}</td>
+          <td>{% if s.avg_wave_period_s is not none %}{{ s.avg_wave_period_s }} s{% else %}<span class="na">–</span>{% endif %}</td>
+          <td>{% if s.max_rain_mmh is not none %}{{ s.max_rain_mmh }}{% else %}<span class="na">–</span>{% endif %}</td>
+          <td style="font-size:11px;">{% if s.best_window and s.best_window != '–' %}{{ s.best_window }}{% else %}<span class="na">–</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ══ Recommandation ═══════════════════════════════════════════════ -->
   <div class="card">
     <h2>Recommandations</h2>
     <div class="recommendation">{{ recommendation }}</div>
   </div>
 
-  <!-- Top 3 meilleurs jours -->
-  {% if top_days %}
-  <div class="card">
-    <h2>Top 3 meilleurs jours (7 prochains jours)</h2>
-    <div class="days-grid">
-      {% for s in top_days %}
-      <div class="day-card {{ s.css_class }}">
-        <div class="day-name">{{ s.day_long }}</div>
-        <div class="day-score" style="color:{{ s.color }};">{{ s.daily_score | int }}</div>
-        <div class="day-verdict">{{ s.verdict }}</div>
-        <div class="day-meta">
-          {% if s.avg_wind_kts is not none %}
-          Vent ~{{ s.avg_wind_kts }} kts
-          {% if s.wind_dir %}{{ s.wind_dir_arrow }} {{ s.wind_dir }}{% endif %}
-          <br>
-          {% endif %}
-          {% if s.avg_wave_m is not none %}
-          Vagues ~{{ s.avg_wave_m }} m
-          {% if s.avg_wave_period_s is not none %} · {{ s.avg_wave_period_s }}s{% endif %}
-          <br>
-          {% endif %}
-          {% if s.best_window != '–' %}Créneau : {{ s.best_window }}{% endif %}
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-  </div>
-  {% endif %}
-
-  <!-- Jours à éviter -->
-  {% if bad_days %}
-  <div class="card">
-    <h2>Jours à éviter (7 prochains jours)</h2>
-    <div class="days-grid">
-      {% for s in bad_days %}
-      <div class="day-card deconseille">
-        <div class="day-name">{{ s.day_long }}</div>
-        <div class="day-score" style="color:#e53e3e;">{{ s.daily_score | int }}</div>
-        <div class="day-verdict">{{ s.verdict }}</div>
-        <div class="day-meta">
-          Facteur limitant : {{ s.limiting_factor }}
-          {% if s.avg_wind_kts is not none %}<br>Vent ~{{ s.avg_wind_kts }} kts
-          {% if s.wind_dir %} {{ s.wind_dir_arrow }} {{ s.wind_dir }}{% endif %}{% endif %}
-          {% if s.avg_wave_m is not none %}<br>Vagues ~{{ s.avg_wave_m }} m
-          {% if s.avg_wave_period_s is not none %} · {{ s.avg_wave_period_s }}s{% endif %}{% endif %}
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-  </div>
-  {% endif %}
-
-  <!-- Graphiques -->
+  <!-- ══ Graphiques ═══════════════════════════════════════════════════ -->
   <div class="card">
     <h2>Prévisions 14 jours — Score de pêche</h2>
     <img class="chart-img" src="{{ charts.score }}" alt="Score 14 jours">
@@ -320,10 +412,11 @@
     <img class="chart-img" src="{{ charts.temp_rain }}" alt="Température et pluie">
   </div>
 
-  <!-- Footer -->
+  <!-- ══ Footer ═══════════════════════════════════════════════════════ -->
   <div class="footer">
     Données météo : Windguru (modèle {{ model | upper }}, spot {{ spot_id }}) &nbsp;·&nbsp;
-    Kayak Fishing Forecast V2
+    Vagues : Open-Meteo Marine API &nbsp;·&nbsp;
+    Kayak Fishing Forecast V3
   </div>
 
 </div>

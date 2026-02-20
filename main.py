@@ -40,7 +40,7 @@ from src.fetch_data import (
 )
 from src.fetch_waves import WaveFetchError, fetch_wave_forecast, load_wave_data, save_wave_data
 from src.process_data import process_data, merge_wave_data, save_processed_data
-from src.scoring import compute_scores
+from src.scoring import compute_scores, get_today_hourly, compute_3h_windows
 from src.visualize import generate_all_charts
 from src.report import generate_report, save_report
 from src.email_sender import send_report_email
@@ -145,6 +145,9 @@ def main(no_email: bool = False, no_fetch: bool = False) -> int:
         logger.error("Aucun résumé journalier produit. Arrêt.")
         return 1
 
+    today_hourly = get_today_hourly(df_scored, config)
+    windows_3h   = compute_3h_windows(df_scored, config, n_days=3)
+
     # Score du jour
     today_summary = next((s for s in daily_summaries if s["date"] == today), None)
     if today_summary:
@@ -158,7 +161,11 @@ def main(no_email: bool = False, no_fetch: bool = False) -> int:
     chart_paths = generate_all_charts(df_scored, daily_summaries, "reports")
 
     # 7. Rapport HTML — version locale (base64 inline) pour sauvegarde
-    html_local = generate_report(df_scored, daily_summaries, chart_paths, config, email_mode=False)
+    html_local = generate_report(
+        df_scored, daily_summaries, chart_paths, config,
+        today_hourly=today_hourly, windows_3h=windows_3h,
+        email_mode=False,
+    )
     save_report(html_local, "reports", today)
 
     # 8. Envoi email
@@ -167,7 +174,11 @@ def main(no_email: bool = False, no_fetch: bool = False) -> int:
         return 0
 
     # Version email (images CID) pour que les graphiques s'affichent dans Gmail
-    html_email = generate_report(df_scored, daily_summaries, chart_paths, config, email_mode=True)
+    html_email = generate_report(
+        df_scored, daily_summaries, chart_paths, config,
+        today_hourly=today_hourly, windows_3h=windows_3h,
+        email_mode=True,
+    )
 
     try:
         send_report_email(html_email, config, daily_summaries, chart_paths=chart_paths)
