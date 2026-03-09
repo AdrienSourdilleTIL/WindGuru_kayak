@@ -28,6 +28,8 @@ from typing import Optional
 
 import pandas as pd
 import pytz
+from astral import LocationInfo
+from astral.sun import sun as astral_sun
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +252,7 @@ def compute_hourly_score(row: pd.Series, weights: dict) -> float:
         + (s_temp   - 50) * 2 * weights.get("temperature", 0.10)
     )
 
-    return round(max(0.0, min(100.0, total)), 1)
+    return round(max(-100.0, min(100.0, total)), 1)
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +273,7 @@ def get_verdict(score: float, thresholds: dict) -> str:
         return "Favorable"
     if score >= thresholds.get("moyen", 30):
         return "Moyen"
-    return "Déconseillé"
+    return "Déconseillé"  # covers 0–29 and all negative scores
 
 
 def _find_best_window(df_day: pd.DataFrame, score_col: str = "fishing_score") -> str:
@@ -390,7 +392,7 @@ def compute_scores(df: pd.DataFrame, config: dict) -> tuple[pd.DataFrame, list[d
 def _cell_css_score(score: float) -> str:
     if score >= 70: return "cell-green"
     if score >= 30: return "cell-yellow"
-    return "cell-red"
+    return "cell-red"  # covers 0–29 and all negative scores
 
 def _cell_css_wind(wind_kts: Optional[float]) -> str:
     if wind_kts is None: return ""
@@ -434,6 +436,26 @@ def _cell_css_temp(temp_c: Optional[float]) -> str:
 # Données horaires aujourd'hui
 # ---------------------------------------------------------------------------
 
+def _get_sun_times(config: dict, for_date: date) -> tuple[int | None, int | None]:
+    """
+    Retourne (heure_lever, heure_coucher) pour la date donnée.
+    Utilise la lib astral avec les coordonnées du spot depuis config.yaml.
+    Retourne (None, None) si le calcul échoue.
+    """
+    try:
+        loc = LocationInfo(
+            name=config["spot"]["name"],
+            region="France",
+            timezone=config["fishing"]["timezone"],
+            latitude=config["spot"]["lat"],
+            longitude=config["spot"]["lon"],
+        )
+        s = astral_sun(loc.observer, date=for_date, tzinfo=loc.timezone)
+        return s["sunrise"].hour, s["sunset"].hour
+    except Exception:
+        return None, None
+
+
 def get_today_hourly(df_scored: pd.DataFrame, config: dict) -> list[dict]:
     """
     Retourne la liste des scores horaires pour aujourd'hui.
@@ -448,6 +470,8 @@ def get_today_hourly(df_scored: pd.DataFrame, config: dict) -> list[dict]:
     tz = pytz.timezone(config["fishing"]["timezone"])
     today = pd.Timestamp.now(tz=tz).date()
     thresholds = config["scoring"]["verdicts"]
+
+    sunrise_h, sunset_h = _get_sun_times(config, today)
 
     df_today = df_scored[df_scored["datetime"].apply(lambda dt: dt.date()) == today].copy()
     df_today = df_today.sort_values("datetime")
@@ -471,9 +495,17 @@ def get_today_hourly(df_scored: pd.DataFrame, config: dict) -> list[dict]:
         rain_val   = float(rain)   if rain   is not None and pd.notna(rain)   else None
         temp_val   = float(temp)   if temp   is not None and pd.notna(temp)   else None
 
+        hour = row["datetime"].hour
+        sun_icon = ""
+        if sunrise_h is not None and hour == sunrise_h:
+            sun_icon = "🌅"
+        elif sunset_h is not None and hour == sunset_h:
+            sun_icon = "🌇"
+
         rows.append({
-            "hour":          row["datetime"].hour,
-            "time_str":      f"{row['datetime'].hour:02d}h",
+            "hour":          hour,
+            "time_str":      f"{hour:02d}h",
+            "sun_icon":      sun_icon,
             "score":         score,
             "verdict":       verdict,
             "css_class":     _verdict_css(verdict),

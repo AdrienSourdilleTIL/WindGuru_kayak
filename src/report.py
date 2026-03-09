@@ -1,13 +1,7 @@
 """
-report.py — Génération du rapport HTML via le template Jinja2 (V3).
-
-Deux modes de rendu :
-- mode "local"  : images encodées base64 inline (pour sauvegarde HTML standalone).
-- mode "email"  : images référencées par CID (Content-ID) pour email multipart/related.
-                  Les CID sont passés au template ; les pièces MIME sont gérées par email_sender.
+report.py — Génération du rapport HTML via le template Jinja2 (V4).
 """
 
-import base64
 import logging
 from collections import defaultdict
 from datetime import date, datetime
@@ -36,14 +30,6 @@ VERDICT_COLOR = {
     "Déconseillé": "#742a2a",
 }
 
-# CID fixes pour les 4 graphiques (utilisés en mode email)
-CHART_CIDS = {
-    "score":     "chart_score@kayak",
-    "wind":      "chart_wind@kayak",
-    "waves":     "chart_waves@kayak",
-    "temp_rain": "chart_temprain@kayak",
-}
-
 
 def _date_to_long_fr(d: date) -> str:
     jour = JOURS_FR[d.weekday()]
@@ -53,11 +39,6 @@ def _date_to_long_fr(d: date) -> str:
 
 def _date_to_short_fr(d: date) -> str:
     return f"{JOURS_FR[d.weekday()][:3]}. {d.day:02d}/{d.month:02d}"
-
-
-def _encode_image(path: Path) -> str:
-    """Encode un fichier PNG en base64 pour intégration inline dans HTML."""
-    return base64.b64encode(path.read_bytes()).decode("utf-8")
 
 
 def _group_windows_by_day(windows_3h: list[dict]) -> list[dict]:
@@ -124,26 +105,22 @@ def _generate_recommendation(daily_summaries: list[dict]) -> str:
 def _build_template_context(
     daily_summaries: list[dict],
     config: dict,
-    charts_rendered: dict,
     today_hourly: list[dict] | None = None,
     windows_3h: list[dict] | None = None,
+    tides: list[dict] | None = None,
 ) -> dict:
-    """
-    Construit le contexte Jinja2 commun aux deux modes de rendu.
-
-    Args:
-        charts_rendered: Dict {'score': <src string>, 'wind': ..., ...}
-                         En mode local : "data:image/png;base64,..."
-                         En mode email : "cid:chart_score@kayak"
-        today_hourly:    Liste de dicts horaires pour aujourd'hui (depuis get_today_hourly).
-        windows_3h:      Liste de dicts créneaux 3h pour les 3 prochains jours.
-    """
     tz = pytz.timezone(config["fishing"]["timezone"])
     now_local = datetime.now(tz)
     today = now_local.date()
 
-    today_summary = next((s for s in daily_summaries if s["date"] == today), None)
-    today_css = VERDICT_CSS.get(today_summary["verdict"] if today_summary else "", "moyen")
+    today_summary_raw = next((s for s in daily_summaries if s["date"] == today), None)
+    today_css = VERDICT_CSS.get(today_summary_raw["verdict"] if today_summary_raw else "", "moyen")
+    today_tide = {t["date"]: t for t in (tides or {})}.get(today)
+    today_summary = enrich(today_summary_raw) if today_summary_raw else None
+    if today_summary and today_tide:
+        today_summary["coeff"]       = today_tide["coeff"]
+        today_summary["coeff_label"] = today_tide["coeff_label"]
+        today_summary["tides"]       = today_tide["tides"]
 
     future = [s for s in daily_summaries if s["date"] > today]
     top_days = sorted(future, key=lambda s: s["daily_score"], reverse=True)[:3]
@@ -157,8 +134,24 @@ def _build_template_context(
         s["color"]     = VERDICT_COLOR.get(s["verdict"], "#2d3748")
         return s
 
+    # Index des marées par date pour accès O(1) dans le template
+    tides_by_date: dict = {t["date"]: t for t in (tides or [])}
+
+    # Enrichir les résumés journaliers avec les données de marées
+    def enrich_with_tides(s: dict) -> dict:
+        tide = tides_by_date.get(s["date"])
+        if tide:
+            s["coeff"]       = tide["coeff"]
+            s["coeff_label"] = tide["coeff_label"]
+            s["tides"]       = tide["tides"]
+        else:
+            s["coeff"]       = None
+            s["coeff_label"] = None
+            s["tides"]       = []
+        return s
+
     # Résumé 14 jours enrichi (tous les jours, y compris aujourd'hui)
-    all_days = [enrich(s) for s in daily_summaries]
+    all_days = [enrich_with_tides(enrich(s)) for s in daily_summaries]
 
     # Grouper les créneaux 3h par jour
     windows_by_day = _group_windows_by_day(windows_3h or [])
@@ -173,7 +166,7 @@ def _build_template_context(
         "today_str":          today.isoformat(),
         "today_long":         _date_to_long_fr(today),
         "generated_at":       now_local.strftime("%H:%M"),
-        "today_summary":      enrich(today_summary) if today_summary else None,
+        "today_summary":      today_summary,
         "today_css":          today_css,
         "today_hourly":       today_hourly or [],
         "best_hourly_score":  best_hourly_score,
@@ -182,19 +175,18 @@ def _build_template_context(
         "top_days":           [enrich(s) for s in top_days],
         "bad_days":           [enrich(s) for s in bad_days],
         "recommendation":     _generate_recommendation(daily_summaries),
-        "charts":             charts_rendered,
     }
 
 
 def generate_report(
     df_scored,
     daily_summaries: list[dict],
-    chart_paths: dict,
     config: dict,
     today_hourly: list[dict] | None = None,
     windows_3h: list[dict] | None = None,
+    tides: list[dict] | None = None,
+    history_ctx: dict | None = None,
     templates_dir: str = "templates",
-    email_mode: bool = False,
 ) -> str:
     """
     Génère le rapport HTML complet.
@@ -202,38 +194,28 @@ def generate_report(
     Args:
         df_scored:       DataFrame scoré.
         daily_summaries: Liste de résumés journaliers.
-        chart_paths:     Dict {'score': Path, 'wind': Path, 'waves': Path, 'temp_rain': Path}.
         config:          Configuration chargée depuis config.yaml.
         today_hourly:    Liste de dicts horaires pour aujourd'hui.
         windows_3h:      Liste de dicts créneaux 3h pour les 3 prochains jours.
         templates_dir:   Dossier contenant report.html.
-        email_mode:      Si True, utilise des CID pour les images (pour email multipart/related).
-                         Si False, encode les images en base64 inline (HTML standalone).
 
     Returns:
         Chaîne HTML complète.
     """
-    if email_mode:
-        # Mode email : les images sont référencées par CID, attachées séparément par email_sender
-        charts_rendered = {key: f"cid:{cid}" for key, cid in CHART_CIDS.items()}
-    else:
-        # Mode local : images base64 inline
-        charts_rendered = {
-            key: f"data:image/png;base64,{_encode_image(path)}"
-            for key, path in chart_paths.items()
-        }
-
     ctx = _build_template_context(
-        daily_summaries, config, charts_rendered,
+        daily_summaries, config,
         today_hourly=today_hourly,
         windows_3h=windows_3h,
+        tides=tides,
     )
+    if history_ctx:
+        ctx.update(history_ctx)
 
     env = Environment(loader=FileSystemLoader(templates_dir))
     template = env.get_template("report.html")
     html = template.render(**ctx)
 
-    logger.info("Rapport HTML généré (%d caractères, mode=%s).", len(html), "email" if email_mode else "local")
+    logger.info("Rapport HTML généré (%d caractères).", len(html))
     return html
 
 

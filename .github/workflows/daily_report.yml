@@ -32,6 +32,7 @@ jobs:
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          WORLDTIDES_API_KEY: ${{ secrets.WORLDTIDES_API_KEY }}
 
       - name: Upload du rapport comme artefact
         if: always()  # Même en cas d'erreur partielle

@@ -63,6 +63,8 @@
     .score-favorable  { background: #fefcbf; color: #744210; border: 3px solid #f6e05e; }
     .score-moyen      { background: #feebc8; color: #7b341e; border: 3px solid #f6ad55; }
     .score-deconseille{ background: #fed7d7; color: #742a2a; border: 3px solid #fc8181; }
+    /* Negative scores get a darker red treatment */
+    .score-circle .score-num.negative { font-size: 22px; }
 
     /* ── Résumé aujourd'hui (header de section) ──────────── */
     .today-grid { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
@@ -216,14 +218,6 @@
       color: #2c5282;
     }
 
-    /* ── Graphiques ──────────────────────────────────────── */
-    .chart-img {
-      width: 100%;
-      border-radius: 6px;
-      border: 1px solid #e2e8f0;
-      display: block;
-    }
-
     /* ── Footer ──────────────────────────────────────────── */
     .footer {
       text-align: center;
@@ -233,6 +227,17 @@
       background: white;
       border-radius: 0 0 12px 12px;
     }
+
+    /* ── Coefficient de marée ────────────────────────────── */
+    .tide-coeff {
+      display: inline-block;
+      border-radius: 5px;
+      padding: 1px 7px;
+      font-size: 12px; font-weight: 700;
+    }
+    .tide-vive-eau   { background: #ebf8ff; color: #2b6cb0; border: 1px solid #bee3f8; }
+    .tide-moyenne    { background: #f0fff4; color: #276749; border: 1px solid #9ae6b4; }
+    .tide-morte-eau  { background: #fefcbf; color: #744210; border: 1px solid #f6e05e; }
 
     /* ── Divers ──────────────────────────────────────────── */
     .na { color: #cbd5e0; }
@@ -262,7 +267,7 @@
     {% if today_summary %}
     <div class="today-grid" style="margin-bottom:20px;">
       <div class="score-circle score-{{ today_css }}">
-        <div class="score-num">{{ today_summary.daily_score | int }}</div>
+        <div class="score-num{% if today_summary.daily_score < 0 %} negative{% endif %}">{{ today_summary.daily_score | int }}</div>
         <div class="score-label">/100</div>
       </div>
       <div class="today-details">
@@ -295,6 +300,18 @@
           &nbsp;|&nbsp; Facteur limitant : <span>{{ today_summary.limiting_factor }}</span>
           {% endif %}
           {% endif %}
+          {% if today_summary.coeff is not none %}
+          <br>
+          Marée :
+          <span class="tide-coeff tide-{{ today_summary.coeff_label | replace('-', '-') }}">coeff {{ today_summary.coeff }}</span>
+          <span style="font-size:12px; color:#718096;">({{ today_summary.coeff_label }})</span>
+          {% if today_summary.tides %}
+          &nbsp;—&nbsp;
+          {% for t in today_summary.tides %}
+            <span style="font-size:12px;">{{ t.type }} {{ t.time }} ({{ t.height_m }} m)</span>{% if not loop.last %}&nbsp;·&nbsp;{% endif %}
+          {% endfor %}
+          {% endif %}
+          {% endif %}
         </div>
       </div>
     </div>
@@ -318,7 +335,7 @@
         {% for h in today_hourly %}
         <tr{% if h.score == best_hourly_score and h.score > 30 %} class="best-row"{% endif %}>
           <td>
-            {{ h.time_str }}
+            {{ h.time_str }}{% if h.sun_icon %} {{ h.sun_icon }}{% endif %}
             {% if h.score == best_hourly_score and h.score > 30 %}<span class="tag-best">top</span>{% endif %}
           </td>
           <td class="{{ h.cell_score }}"><span class="score-badge {{ h.css_class }}">{{ h.score | int }}</span></td>
@@ -371,6 +388,7 @@
           <th>Date</th>
           <th>Score</th>
           <th>Verdict</th>
+          <th>Marée</th>
           <th>Vent moy.</th>
           <th>Rafales max</th>
           <th>Vagues</th>
@@ -385,6 +403,7 @@
           <td>{{ s.day_short }}{% if s.date.isoformat() == today_str %} <span class="tag-best" style="background:#2b6cb0;">auj.</span>{% endif %}</td>
           <td><span class="score-badge {{ s.css_class }}">{{ s.daily_score | int }}</span></td>
           <td style="font-size:11px; font-weight:600; color:{{ s.color }};">{{ s.verdict }}</td>
+          <td>{% if s.coeff is not none %}<span class="tide-coeff tide-{{ s.coeff_label }}">{{ s.coeff }}</span>{% else %}<span class="na">–</span>{% endif %}</td>
           <td>{% if s.avg_wind_kts is not none %}{{ s.avg_wind_kts }}{% if s.wind_dir_arrow %} {{ s.wind_dir_arrow }}{% endif %}{% else %}<span class="na">–</span>{% endif %}</td>
           <td>{% if s.max_gust_kts is not none %}{{ s.max_gust_kts }}{% else %}<span class="na">–</span>{% endif %}</td>
           <td>{% if s.avg_wave_m is not none %}{{ s.avg_wave_m }} m{% else %}<span class="na">–</span>{% endif %}</td>
@@ -397,6 +416,39 @@
     </table>
   </div>
 
+  <!-- ══ Historique & Stats ═══════════════════════════════════════════ -->
+  {% if best_day_next7 is defined or history_avg_score is defined %}
+  <div class="card">
+    <h2>Historique & meilleur créneau à venir</h2>
+    <div style="display:flex; gap:24px; flex-wrap:wrap; font-size:13px; color:#4a5568; line-height:2.2;">
+      {% if best_day_next7 %}
+      <div>
+        🎣 <strong>Meilleure journée cette semaine :</strong>
+        <span style="font-weight:700;">{{ best_day_next7.date }}</span>
+        — <span class="score-badge {{ best_day_next7.verdict | lower | replace('é','e') | replace('î','i') }}">{{ best_day_next7.daily_score | int }}</span>
+        <span style="color:#718096; font-size:12px;">({{ best_day_next7.verdict }}{% if best_day_next7.best_window and best_day_next7.best_window != '–' %}, créneau {{ best_day_next7.best_window }}{% endif %})</span>
+      </div>
+      {% endif %}
+      {% if history_avg_score is not none %}
+      <div>
+        📊 <strong>Score moyen ({{ history_days_count }} derniers jours enregistrés) :</strong>
+        <span style="font-weight:700;">{{ history_avg_score }}</span>/100
+      </div>
+      {% endif %}
+      {% if recent_good_days %}
+      <div style="width:100%;">
+        ✅ <strong>Meilleures sorties récentes :</strong>
+        {% for h in recent_good_days %}
+          <span style="font-weight:600;">{{ h.date }}</span>
+          — score <span style="font-weight:700;">{{ h.score | int }}</span>
+          ({{ h.verdict }}){% if not loop.last %}&nbsp;&nbsp;·&nbsp;&nbsp;{% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
   <!-- ══ Recommandation ═══════════════════════════════════════════════ -->
   <div class="card">
     <h2>Recommandations</h2>
@@ -405,9 +457,16 @@
 
   <!-- ══ Footer ═══════════════════════════════════════════════════════ -->
   <div class="footer">
-    Données météo : Windguru (modèle {{ model | upper }}, spot {{ spot_id }}) &nbsp;·&nbsp;
-    Vagues : Open-Meteo Marine API &nbsp;·&nbsp;
-    Kayak Fishing Forecast V3
+    Données météo :
+    <a href="https://www.windguru.cz/{{ spot_id }}" target="_blank" style="color:#718096;">
+      Windguru (modèle {{ model | upper }}, spot {{ spot_id }})
+    </a>
+    &nbsp;·&nbsp;
+    <a href="https://open-meteo.com/en/docs/marine-weather-api" target="_blank" style="color:#718096;">
+      Open-Meteo Marine API
+    </a>
+    &nbsp;·&nbsp;
+    Kayak Fishing Forecast V4
   </div>
 
 </div>

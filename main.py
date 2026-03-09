@@ -7,9 +7,8 @@ Enchaîne les étapes :
   3. Récupération des données de vagues Open-Meteo Marine API
   4. Normalisation et fusion des données
   5. Calcul des scores de pêche
-  6. Génération des graphiques
-  7. Génération du rapport HTML
-  8. Envoi de l'email quotidien
+  6. Génération du rapport HTML
+  7. Envoi de l'email quotidien
 
 Usage :
   python main.py               # Exécution complète
@@ -19,6 +18,7 @@ Usage :
 
 import argparse
 import logging
+import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -39,10 +39,11 @@ from src.fetch_data import (
     save_raw_data,
 )
 from src.fetch_waves import WaveFetchError, fetch_wave_forecast, load_wave_data, save_wave_data
+from src.fetch_tides import TideFetchError, fetch_tides, load_tide_data, save_tide_data
 from src.process_data import process_data, merge_wave_data, save_processed_data
 from src.scoring import compute_scores, get_today_hourly, compute_3h_windows
-from src.visualize import generate_all_charts
 from src.report import generate_report, save_report
+from src.history import append_to_history, load_history, build_history_context
 from src.email_sender import send_report_email
 
 
@@ -129,6 +130,27 @@ def main(no_email: bool = False, no_fetch: bool = False) -> int:
             logger.warning("Données vagues indisponibles : %s. Score vagues = neutre.", e)
             df_waves = None
 
+    # 3b. Données de marées — WorldTides API
+    tide_api_key = os.environ.get("WORLDTIDES_API_KEY", "").strip()
+    tides = None
+    if no_fetch:
+        tides = load_tide_data(raw_dir)
+        if tides is None and tide_api_key:
+            logger.info("Cache marées introuvable — fetch WorldTides quand même.")
+            try:
+                tides = fetch_tides(spot["lat"], spot["lon"], tide_api_key, forecast_days)
+                save_tide_data(tides, raw_dir, today)
+            except TideFetchError as e:
+                logger.warning("Données marées indisponibles : %s", e)
+    elif tide_api_key:
+        try:
+            tides = fetch_tides(spot["lat"], spot["lon"], tide_api_key, forecast_days)
+            save_tide_data(tides, raw_dir, today)
+        except TideFetchError as e:
+            logger.warning("Données marées indisponibles : %s. Marées absentes du rapport.", e)
+    else:
+        logger.info("WORLDTIDES_API_KEY non définie — marées absentes du rapport.")
+
     # 4. Normalisation vent + fusion vagues
     df = process_data(raw_data, config)
     if df.empty:
@@ -157,31 +179,26 @@ def main(no_email: bool = False, no_fetch: bool = False) -> int:
             today_summary["verdict"],
         )
 
-    # 6. Graphiques
-    chart_paths = generate_all_charts(df_scored, daily_summaries, "reports")
+    # 6. Historique des scores
+    append_to_history(daily_summaries)
+    history = load_history()
+    history_ctx = build_history_context(history, daily_summaries)
 
-    # 7. Rapport HTML — version locale (base64 inline) pour sauvegarde
-    html_local = generate_report(
-        df_scored, daily_summaries, chart_paths, config,
+    # 7. Rapport HTML
+    html = generate_report(
+        df_scored, daily_summaries, config,
         today_hourly=today_hourly, windows_3h=windows_3h,
-        email_mode=False,
+        tides=tides, history_ctx=history_ctx,
     )
-    save_report(html_local, "reports", today)
+    save_report(html, "reports", today)
 
     # 8. Envoi email
     if no_email:
         logger.info("Mode --no-email : envoi ignoré. Rapport disponible dans reports/")
         return 0
 
-    # Version email (images CID) pour que les graphiques s'affichent dans Gmail
-    html_email = generate_report(
-        df_scored, daily_summaries, chart_paths, config,
-        today_hourly=today_hourly, windows_3h=windows_3h,
-        email_mode=True,
-    )
-
     try:
-        send_report_email(html_email, config, daily_summaries, chart_paths=chart_paths)
+        send_report_email(html, config, daily_summaries)
         logger.info("Pipeline terminé avec succès.")
         return 0
     except RuntimeError as e:
