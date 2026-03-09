@@ -2,9 +2,24 @@
 scoring.py — Algorithme "Fishing Suitability Score" pour le kayak pêche (V3).
 
 Calcule un score 0-100 par créneau horaire, puis un score journalier agrégé.
-Le vent est en nœuds. La période des vagues interagit avec la hauteur via
-un critère de raideur (H/T) dans le malus bloquant.
-Un malus bloquant plafonne le score à 20 si les conditions sont rédhibitoires.
+Le vent est en nœuds.
+
+Formule centrée symétrique :
+  Chaque métrique i produit un score brut s_i ∈ [0, 100] via une courbe
+  linéaire par morceaux. Sa contribution au score final est :
+
+      contribution_i = (s_i − 50) × 2 × poids_i
+
+  - s_i = 100 (parfait) → +poids_i × 100 pts  (ex. vent ideal → +25)
+  - s_i =  50 (neutre)  →   0 pt
+  - s_i =   0 (terrible) → −poids_i × 100 pts  (ex. vent terrible → −25)
+
+  Les poids somment à 1.0, donc le total ∈ [−100, +100].
+  Score final = max(0, min(100, total)).
+
+  Avantages : pas de seuil arbitraire, pas de plafonnement par métrique —
+  chaque condition contribue proportionnellement à son poids, en positif
+  ou en négatif. Les mauvaises conditions se déduisent naturellement.
 """
 
 import logging
@@ -198,45 +213,6 @@ def score_temp(temp_c: Optional[float]) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Malus bloquant : conditions rédhibitoires
-# ---------------------------------------------------------------------------
-
-def _blocking_malus(wind_kts: Optional[float], gust_kts: Optional[float],
-                    wave_m: Optional[float], period_s: Optional[float] = None) -> bool:
-    """
-    Retourne True si les conditions sont rédhibitoires pour le kayak.
-    Dans ce cas, le score sera plafonné à 20/100.
-
-    Critères bloquants :
-    - Vent moyen > 25 kts  (force 6 Beaufort)
-    - Rafales > 30 kts
-    - Vagues > 2.0m  (limite absolue)
-    - Raideur H/T > 0.18  (mer hachée/cassante — ex: 1m/5s = 0.20 → bloqué)
-    - Si période inconnue : hauteur > 1.4m (conservateur)
-
-    La raideur H/T permet de différencier :
-      1m / 5s  → steepness 0.20 → bloqué   (vague courte et cassante)
-      1.5m / 14s → steepness 0.107 → libre  (houle longue gérable)
-    """
-    if wind_kts is not None and wind_kts > 25:
-        return True
-    if gust_kts is not None and gust_kts > 30:
-        return True
-    if wave_m is not None:
-        if wave_m > 2.0:
-            return True
-        if period_s is not None and period_s > 0:
-            steepness = wave_m / period_s
-            if steepness > 0.18:
-                return True
-        else:
-            # Période inconnue : critère hauteur conservateur
-            if wave_m > 1.4:
-                return True
-    return False
-
-
-# ---------------------------------------------------------------------------
 # Score composite horaire
 # ---------------------------------------------------------------------------
 
@@ -244,40 +220,37 @@ def compute_hourly_score(row: pd.Series, weights: dict) -> float:
     """
     Calcule le score composite pour une ligne horaire.
 
+    Formule centrée : contribution_i = (score_i − 50) × 2 × poids_i
+      → score_i parfait (100) contribue +poids_i×100 pts
+      → score_i neutre  ( 50) contribue   0 pt
+      → score_i terrible( 0 ) contribue −poids_i×100 pts
+    Total ∈ [−100, +100], ramené à [0, 100].
+
     Args:
         row:     Ligne du DataFrame (wind_kts, gust_kts, wave_height_m,
                  wave_period_s, rain_mmh, temp_c).
-        weights: Dict de pondérations depuis config.yaml.
+        weights: Dict de pondérations depuis config.yaml (somme = 1.0).
 
     Returns:
-        Score entre 0 et 100 (plafonné à 20 si conditions bloquantes).
+        Score entre 0 et 100.
     """
-    wind_kts = row.get("wind_kts")
-    gust_kts = row.get("gust_kts")
-    wave_m   = row.get("wave_height_m")
-    period_s = row.get("wave_period_s")
-
-    s_wind   = score_wind(wind_kts)
-    s_gust   = score_gust(gust_kts)
-    s_wave_h = score_wave_height(wave_m)
-    s_wave_p = score_wave_period(period_s)
+    s_wind   = score_wind(row.get("wind_kts"))
+    s_gust   = score_gust(row.get("gust_kts"))
+    s_wave_h = score_wave_height(row.get("wave_height_m"))
+    s_wave_p = score_wave_period(row.get("wave_period_s"))
     s_rain   = score_rain(row.get("rain_mmh"))
     s_temp   = score_temp(row.get("temp_c"))
 
     total = (
-        s_wind   * weights.get("wind", 0.25)
-        + s_gust   * weights.get("gust", 0.20)
-        + s_wave_h * weights.get("wave_height", 0.15)
-        + s_wave_p * weights.get("wave_period", 0.20)
-        + s_rain   * weights.get("rain", 0.10)
-        + s_temp   * weights.get("temperature", 0.10)
+          (s_wind   - 50) * 2 * weights.get("wind", 0.25)
+        + (s_gust   - 50) * 2 * weights.get("gust", 0.20)
+        + (s_wave_h - 50) * 2 * weights.get("wave_height", 0.15)
+        + (s_wave_p - 50) * 2 * weights.get("wave_period", 0.20)
+        + (s_rain   - 50) * 2 * weights.get("rain", 0.10)
+        + (s_temp   - 50) * 2 * weights.get("temperature", 0.10)
     )
 
-    # Malus bloquant : plafonner à 20 si conditions rédhibitoires
-    if _blocking_malus(wind_kts, gust_kts, wave_m, period_s):
-        total = min(total, 20.0)
-
-    return round(total, 1)
+    return round(max(0.0, min(100.0, total)), 1)
 
 
 # ---------------------------------------------------------------------------
