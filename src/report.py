@@ -113,6 +113,14 @@ def _build_template_context(
     now_local = datetime.now(tz)
     today = now_local.date()
 
+    def enrich(s: dict) -> dict:
+        s = dict(s)
+        s["day_long"]  = _date_to_long_fr(s["date"])
+        s["day_short"] = _date_to_short_fr(s["date"])
+        s["css_class"] = VERDICT_CSS.get(s["verdict"], "moyen")
+        s["color"]     = VERDICT_COLOR.get(s["verdict"], "#2d3748")
+        return s
+
     today_summary_raw = next((s for s in daily_summaries if s["date"] == today), None)
     today_css = VERDICT_CSS.get(today_summary_raw["verdict"] if today_summary_raw else "", "moyen")
     today_tide = {t["date"]: t for t in (tides or {})}.get(today)
@@ -125,14 +133,6 @@ def _build_template_context(
     future = [s for s in daily_summaries if s["date"] > today]
     top_days = sorted(future, key=lambda s: s["daily_score"], reverse=True)[:3]
     bad_days = [s for s in future if s["verdict"] == "Déconseillé"][:3]
-
-    def enrich(s: dict) -> dict:
-        s = dict(s)
-        s["day_long"]  = _date_to_long_fr(s["date"])
-        s["day_short"] = _date_to_short_fr(s["date"])
-        s["css_class"] = VERDICT_CSS.get(s["verdict"], "moyen")
-        s["color"]     = VERDICT_COLOR.get(s["verdict"], "#2d3748")
-        return s
 
     # Index des marées par date pour accès O(1) dans le template
     tides_by_date: dict = {t["date"]: t for t in (tides or [])}
