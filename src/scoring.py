@@ -252,7 +252,7 @@ def compute_hourly_score(row: pd.Series, weights: dict) -> float:
         + (s_temp   - 50) * 2 * weights.get("temperature", 0.10)
     )
 
-    return round(max(0.0, min(100.0, total)), 1)
+    return round(max(-100.0, min(100.0, total)), 1)
 
 
 # ---------------------------------------------------------------------------
